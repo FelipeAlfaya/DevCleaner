@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_channel::Sender;
 
+use crate::i18n::Msg;
 use crate::model::{Category, NodeTarget, Risk, ScanNode};
 use crate::scanners::common::{emit_category_summary, list_children, path_node, send_nodes};
 use crate::settings::Settings;
@@ -28,10 +29,10 @@ pub fn scan(settings: &Settings, tx: &Sender<crate::model::ScanEvent>, cancel: &
                 nodes.push(path_node(
                     Category::Maven,
                     None,
-                    entry.file_name().to_string_lossy().into(),
+                    entry.file_name().to_string_lossy().to_string(),
                     path,
                     jail.clone(),
-                    "Grupo Maven (~/.m2/repository) — pode incluir artefatos instalados localmente",
+                    Msg::MavenGroup,
                     Risk::Review,
                     false,
                     is_dir,
@@ -48,7 +49,7 @@ pub fn scan(settings: &Settings, tx: &Sender<crate::model::ScanEvent>, cancel: &
         if available {
             None
         } else {
-            Some("Repositório Maven local não encontrado".into())
+            Some(Msg::MavenNone.into())
         },
         &nodes,
     );
@@ -64,7 +65,7 @@ pub fn expand(node: &ScanNode, _settings: &Settings, tx: &Sender<crate::model::S
         node.id,
         path,
         jail_root.clone(),
-        "Coordenada Maven",
+        Msg::MavenCoord,
         Risk::Review,
         false,
         3,

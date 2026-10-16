@@ -4,6 +4,7 @@ use std::process::Command;
 use std::thread;
 use crossbeam_channel::{Receiver, Sender};
 
+use crate::i18n::{Msg, Text};
 use crate::model::{
     DeleteEvent, DeleteOutcome, DeleteResultItem, DeleteStrategy, NodeTarget, ScanNode,
 };
@@ -42,7 +43,7 @@ fn run_delete(nodes: Vec<ScanNode>, selected_ids: HashSet<u64>, tx: Sender<Delet
                         node_id: node.id,
                         label: node.label.clone(),
                         outcome: DeleteOutcome::Skipped,
-                        message: Some("Ação já executada".into()),
+                        message: Some(Msg::DeleteAlreadyRun.into()),
                         bytes_freed: 0,
                     }
                 } else {
@@ -60,7 +61,7 @@ fn run_delete(nodes: Vec<ScanNode>, selected_ids: HashSet<u64>, tx: Sender<Delet
     let _ = tx.send(DeleteEvent::Progress {
         done: total,
         total,
-        current_label: String::new(),
+        current_label: Text::Raw(String::new()),
     });
     let _ = tx.send(DeleteEvent::Finished);
 }
@@ -72,11 +73,11 @@ fn delete_path(
     selected: &[ScanNode],
 ) -> DeleteResultItem {
     if node.risk == crate::model::Risk::Blocked {
-        return item(node, DeleteOutcome::Skipped, Some("Item bloqueado".into()), 0);
+        return item(node, DeleteOutcome::Skipped, Some(Msg::DeleteBlocked.into()), 0);
     }
 
     match validate_delete_path(jail_root, path) {
-        Err(e) => item(node, DeleteOutcome::Failed, Some(e.to_string()), 0),
+        Err(e) => item(node, DeleteOutcome::Failed, Some(e.msg().into()), 0),
         Ok(safe_path) => {
             let size_before = node.size_bytes;
             let has_selected_child = selected.iter().any(|n| n.parent_id == Some(node.id));
@@ -90,7 +91,7 @@ fn delete_path(
 
             match result {
                 Ok(()) => item(node, DeleteOutcome::Removed, None, size_before),
-                Err(e) => item(node, DeleteOutcome::Failed, Some(e.to_string()), 0),
+                Err(e) => item(node, DeleteOutcome::Failed, Some(Text::Raw(e.to_string())), 0),
             }
         }
     }
@@ -104,7 +105,7 @@ fn remove_files_only(
     for child in selected.iter().filter(|n| n.parent_id == Some(parent_id)) {
         if let NodeTarget::Path { path, jail_root } = &child.target {
             let safe = validate_delete_path(jail_root, path).map_err(|_| {
-                std::io::Error::new(std::io::ErrorKind::PermissionDenied, "fora do jail")
+                std::io::Error::new(std::io::ErrorKind::PermissionDenied, "outside the allowed root")
             })?;
             if safe.is_dir() {
                 std::fs::remove_dir_all(safe)?;
@@ -122,6 +123,7 @@ fn run_category_action(strategy: DeleteStrategy, node: &ScanNode) -> DeleteResul
         DeleteStrategy::NpmCacheClean => run_cmd("npm", &["cache", "clean", "--force"]),
         DeleteStrategy::PnpmStorePrune => run_cmd("pnpm", &["store", "prune"]),
         DeleteStrategy::GoCleanCache => run_cmd("go", &["clean", "-cache"]),
+        DeleteStrategy::GoCleanModCache => run_cmd("go", &["clean", "-modcache"]),
         _ => false,
     };
     if ok {
@@ -130,7 +132,7 @@ fn run_category_action(strategy: DeleteStrategy, node: &ScanNode) -> DeleteResul
         item(
             node,
             DeleteOutcome::Failed,
-            Some("Comando da ferramenta falhou ou não está no PATH".into()),
+            Some(Msg::DeleteToolFailed.into()),
             0,
         )
     }
@@ -138,7 +140,7 @@ fn run_category_action(strategy: DeleteStrategy, node: &ScanNode) -> DeleteResul
 
 fn run_docker(id: &str, strategy: DeleteStrategy, node: &ScanNode) -> DeleteResultItem {
     if node.risk == crate::model::Risk::Blocked {
-        return item(node, DeleteOutcome::Skipped, Some("Item bloqueado".into()), 0);
+        return item(node, DeleteOutcome::Skipped, Some(Msg::DeleteBlocked.into()), 0);
     }
     let ok = match strategy {
         DeleteStrategy::DockerImage => run_cmd("docker", &["rmi", id]),
@@ -153,7 +155,7 @@ fn run_docker(id: &str, strategy: DeleteStrategy, node: &ScanNode) -> DeleteResu
         item(
             node,
             DeleteOutcome::Failed,
-            Some("Comando docker falhou".into()),
+            Some(Msg::DeleteDockerFailed.into()),
             0,
         )
     }
@@ -170,7 +172,7 @@ fn run_cmd(program: &str, args: &[&str]) -> bool {
 fn item(
     node: &ScanNode,
     outcome: DeleteOutcome,
-    message: Option<String>,
+    message: Option<Text>,
     bytes_freed: u64,
 ) -> DeleteResultItem {
     DeleteResultItem {

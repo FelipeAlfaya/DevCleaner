@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Text;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Category {
     Npm,
@@ -74,6 +76,7 @@ pub enum DeleteStrategy {
     NpmCacheClean,
     PnpmStorePrune,
     GoCleanCache,
+    GoCleanModCache,
     DockerImage,
     DockerContainer,
     DockerVolume,
@@ -101,11 +104,11 @@ pub struct ScanNode {
     pub id: u64,
     pub parent_id: Option<u64>,
     pub category: Category,
-    pub label: String,
+    pub label: Text,
     pub detail: String,
     pub size_bytes: u64,
     pub modified: Option<DateTime<Utc>>,
-    pub reason: String,
+    pub reason: Text,
     pub risk: Risk,
     pub default_selected: bool,
     pub expandable: bool,
@@ -124,7 +127,7 @@ pub enum CheckState {
 pub struct CategoryStatus {
     pub category: Category,
     pub available: bool,
-    pub unavailable_reason: Option<String>,
+    pub unavailable_reason: Option<Text>,
     pub total_bytes: u64,
     pub item_count: usize,
 }
@@ -152,9 +155,9 @@ pub enum DeleteOutcome {
 #[derive(Debug, Clone)]
 pub struct DeleteResultItem {
     pub node_id: u64,
-    pub label: String,
+    pub label: Text,
     pub outcome: DeleteOutcome,
-    pub message: Option<String>,
+    pub message: Option<Text>,
     pub bytes_freed: u64,
 }
 
@@ -163,7 +166,7 @@ pub enum DeleteEvent {
     Progress {
         done: usize,
         total: usize,
-        current_label: String,
+        current_label: Text,
     },
     Item(DeleteResultItem),
     Finished,

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::i18n::Msg;
 use crate::model::{Category, DeleteStrategy};
 use crate::scanners::common::{action_node, emit_category_summary, send_nodes};
 use crate::settings::Settings;
@@ -18,10 +19,10 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
         let size = dir_size(&store);
         nodes.push(action_node(
             Category::Pnpm,
-            "Store pnpm (prune)".into(),
+            Msg::PnpmLabel,
             store.display().to_string(),
             size,
-            "Remove pacotes não referenciados via pnpm store prune",
+            Msg::PnpmReason,
             DeleteStrategy::PnpmStorePrune,
             true,
         ));
@@ -35,7 +36,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
         if available {
             None
         } else {
-            Some("Store pnpm não encontrado".into())
+            Some(Msg::PnpmNone.into())
         },
         &nodes,
     );

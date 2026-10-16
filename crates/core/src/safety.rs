@@ -4,14 +4,26 @@ use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SafetyError {
-    #[error("caminho inválido")]
+    #[error("invalid path")]
     InvalidPath,
-    #[error("caminho fora da raiz permitida")]
+    #[error("path outside the allowed root")]
     OutsideJail,
-    #[error("caminho protegido do sistema")]
+    #[error("protected system path")]
     ProtectedSystemPath,
-    #[error("symlink ou junction não permitido")]
+    #[error("symlink or junction not allowed")]
     SymlinkEscape,
+}
+
+impl SafetyError {
+    pub fn msg(&self) -> crate::i18n::Msg {
+        use crate::i18n::Msg;
+        match self {
+            SafetyError::InvalidPath => Msg::SafetyInvalidPath,
+            SafetyError::OutsideJail => Msg::SafetyOutsideJail,
+            SafetyError::ProtectedSystemPath => Msg::SafetyProtected,
+            SafetyError::SymlinkEscape => Msg::SafetySymlink,
+        }
+    }
 }
 
 pub fn validate_delete_path(jail_root: &Path, candidate: &Path) -> Result<PathBuf, SafetyError> {

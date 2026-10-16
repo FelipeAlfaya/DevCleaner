@@ -487,12 +487,11 @@ pub fn strata_bar(ui: &mut Ui, p: &Palette, segments: &[StrataSegment], height: 
         }
         let resp = resp.on_hover_ui(|ui| {
             ui.label(egui::RichText::new(crate::i18n::category_name(s.category)).font(strong(14.0)));
-            ui.label(format!(
-                "{} encontrados, {} marcados",
-                cleaner_core::format_bytes(s.found),
-                cleaner_core::format_bytes(s.selected)
+            ui.label(crate::i18n::strata_hover(
+                &cleaner_core::format_bytes(s.found),
+                &cleaner_core::format_bytes(s.selected),
             ));
-            ui.label(egui::RichText::new("Clique para filtrar").color(p.muted).small());
+            ui.label(egui::RichText::new(crate::i18n::click_to_filter()).color(p.muted).small());
         });
         if resp.clicked() {
             clicked = Some(s.category);

@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crossbeam_channel::Sender;
 
+use crate::i18n::{Msg, Text};
 use crate::model::{
     Category, CategoryStatus, DeleteStrategy, NodeTarget, Risk, ScanEvent, ScanNode,
 };
@@ -28,10 +29,10 @@ pub fn send_nodes(tx: &Sender<ScanEvent>, nodes: Vec<ScanNode>) {
 pub fn path_node(
     category: Category,
     parent_id: Option<u64>,
-    label: String,
+    label: impl Into<Text>,
     path: PathBuf,
     jail_root: PathBuf,
-    reason: &str,
+    reason: impl Into<Text>,
     risk: Risk,
     default_selected: bool,
     expandable: bool,
@@ -45,11 +46,11 @@ pub fn path_node(
         id: next_id(),
         parent_id,
         category,
-        label,
+        label: label.into(),
         detail: path.display().to_string(),
         size_bytes,
         modified: modified_time(&path),
-        reason: reason.to_string(),
+        reason: reason.into(),
         risk,
         default_selected,
         expandable,
@@ -60,10 +61,10 @@ pub fn path_node(
 
 pub fn action_node(
     category: Category,
-    label: String,
+    label: impl Into<Text>,
     detail: String,
     size_bytes: u64,
-    reason: &str,
+    reason: impl Into<Text>,
     strategy: DeleteStrategy,
     default_selected: bool,
 ) -> ScanNode {
@@ -71,11 +72,11 @@ pub fn action_node(
         id: next_id(),
         parent_id: None,
         category,
-        label,
+        label: label.into(),
         detail,
         size_bytes,
         modified: None,
-        reason: reason.to_string(),
+        reason: reason.into(),
         risk: Risk::Safe,
         default_selected,
         expandable: false,
@@ -92,7 +93,7 @@ pub fn list_children(
     parent_id: u64,
     root: &Path,
     jail_root: PathBuf,
-    reason: &str,
+    reason: Msg,
     risk: Risk,
     default_selected: bool,
     max_depth: usize,
@@ -128,7 +129,7 @@ pub fn emit_category_summary(
     tx: &Sender<ScanEvent>,
     category: Category,
     available: bool,
-    reason: Option<String>,
+    reason: Option<Text>,
     nodes: &[ScanNode],
 ) {
     let total_bytes: u64 = nodes.iter().map(|n| n.size_bytes).sum();

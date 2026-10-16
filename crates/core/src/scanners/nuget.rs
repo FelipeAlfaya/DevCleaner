@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::i18n::Msg;
 use crate::model::{Category, Risk};
 use crate::scanners::common::{emit_category_summary, path_node, send_nodes};
 use crate::settings::Settings;
@@ -36,7 +37,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
                                 ),
                                 vpath,
                                 jail.clone(),
-                                "Pacote NuGet global",
+                                Msg::NugetPackage,
                                 Risk::Safe,
                                 true,
                                 false,
@@ -56,7 +57,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
         if available {
             None
         } else {
-            Some("Cache NuGet não encontrado".into())
+            Some(Msg::NugetNone.into())
         },
         &nodes,
     );

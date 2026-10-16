@@ -4,10 +4,15 @@ use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Lang;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub temp_min_age_days: u32,
     pub dark_theme: bool,
+    /// Interface language. `None` follows the operating system.
+    #[serde(default)]
+    pub language: Option<Lang>,
 }
 
 impl Default for Settings {
@@ -15,11 +20,17 @@ impl Default for Settings {
         Self {
             temp_min_age_days: 7,
             dark_theme: true,
+            language: None,
         }
     }
 }
 
 impl Settings {
+    /// Language chosen by the user, or the system one.
+    pub fn effective_language(&self) -> Lang {
+        self.language.unwrap_or_else(Lang::detect)
+    }
+
     pub fn config_path() -> Option<PathBuf> {
         ProjectDirs::from("dev", "cleaner", "cleaner").map(|d| d.config_dir().join("settings.json"))
     }

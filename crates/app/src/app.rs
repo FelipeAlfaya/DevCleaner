@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use cleaner_core::scanners;
 use cleaner_core::{
-    format_bytes, start_delete, start_scan, Category, CheckState, DeleteEvent, DeleteHandle,
+    format_bytes, start_delete, Lang, start_scan, Category, CheckState, DeleteEvent, DeleteHandle,
     DeleteOutcome, DeleteResultItem, Risk, ScanEvent, ScanHandle, ScanNode, ScanTree, Settings,
     SortKey, ViewFilter, VisibleRow,
 };
@@ -53,6 +53,7 @@ pub struct CleanerApp {
 impl CleanerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, settings: Settings) -> Self {
         theme::install_fonts(&cc.egui_ctx);
+        cleaner_core::i18n::set_lang(settings.effective_language());
         let (expand_tx, expand_rx) = crossbeam_channel::unbounded();
         Self {
             settings,
@@ -165,7 +166,7 @@ impl CleanerApp {
                         done,
                         total,
                         current_label,
-                    } => self.delete_progress = (done, total, current_label),
+                    } => self.delete_progress = (done, total, current_label.to_string()),
                     DeleteEvent::Item(item) => self.delete_results.push(item),
                     DeleteEvent::Finished => finished = true,
                 }
@@ -183,6 +184,30 @@ impl CleanerApp {
 
     fn save_settings(&self) {
         let _ = self.settings.save();
+    }
+
+    fn set_language(&mut self, lang: Lang) {
+        self.settings.language = Some(lang);
+        cleaner_core::i18n::set_lang(lang);
+        self.save_settings();
+    }
+
+    fn language_menu(&mut self, ui: &mut egui::Ui) {
+        let current = cleaner_core::i18n::lang();
+        let mut chosen = current;
+        egui::ComboBox::from_id_salt("language")
+            .selected_text(current.code().to_uppercase())
+            .width(64.0)
+            .show_ui(ui, |ui| {
+                for &l in Lang::all() {
+                    ui.selectable_value(&mut chosen, l, l.native_name());
+                }
+            })
+            .response
+            .on_hover_text(i18n::language());
+        if chosen != current {
+            self.set_language(chosen);
+        }
     }
 
     /// Categories ordered by bytes found, heaviest first.
@@ -223,30 +248,30 @@ impl CleanerApp {
                     let busy = self.cleaning;
                     let in_results = matches!(self.screen, Screen::Results | Screen::Confirm);
                     if !busy {
-                        if theme::chip(ui, p, "Início", self.screen == Screen::Home, None).clicked() {
+                        if theme::chip(ui, p, i18n::nav_home(), self.screen == Screen::Home, None).clicked() {
                             self.screen = Screen::Home;
                         }
                         let has_results = !self.tree.nodes.is_empty() || self.scanning;
                         if has_results
-                            && theme::chip(ui, p, "Resultados", in_results, None).clicked()
+                            && theme::chip(ui, p, i18n::nav_results(), in_results, None).clicked()
                         {
                             self.screen = Screen::Results;
                         }
                     }
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let label = if self.settings.dark_theme { "Tema claro" } else { "Tema escuro" };
+                        let label = i18n::theme_toggle(self.settings.dark_theme);
                         if theme::chip(ui, p, label, false, None).clicked() {
                             self.settings.dark_theme = !self.settings.dark_theme;
                             self.save_settings();
                         }
+                        self.language_menu(ui);
                         if self.scanning && self.screen != Screen::Results {
                             ui.add_space(8.0);
                             ui.label(
-                                RichText::new(format!(
-                                    "Varrendo {}/{}",
+                                RichText::new(i18n::scanning_short(
                                     self.categories_done,
-                                    Category::all().len()
+                                    Category::all().len(),
                                 ))
                                 .color(p.muted),
                             );
@@ -271,16 +296,13 @@ impl CleanerApp {
                     ui.set_width(text_w);
                     ui.add_space(18.0);
                     ui.label(
-                        RichText::new("Seus caches de desenvolvimento crescem em silêncio.")
+                        RichText::new(i18n::hero_title())
                             .font(display(34.0))
                             .color(p.text),
                     );
                     ui.add_space(10.0);
                     ui.label(
-                        RichText::new(
-                            "O Cleaner procura caches de npm, Cargo, Gradle, Docker e outros 10 \
-                             gerenciadores, mostra quanto cada um ocupa e só apaga o que você aprovar.",
-                        )
+                        RichText::new(i18n::hero_body())
                         .font(body(15.0))
                         .color(p.muted),
                     );
@@ -289,14 +311,14 @@ impl CleanerApp {
                     let total = self.tree.total_found();
                     ui.horizontal(|ui| {
                         if self.scanning {
-                            if theme::primary_button(ui, p, "  Ver varredura em andamento  ", true).clicked() {
+                            if theme::primary_button(ui, p, &format!("  {}  ", i18n::view_scan_in_progress()), true).clicked() {
                                 self.screen = Screen::Results;
                             }
                         } else if self.has_scanned && !self.tree.nodes.is_empty() {
-                            if theme::primary_button(ui, p, "  Ver resultados  ", true).clicked() {
+                            if theme::primary_button(ui, p, &format!("  {}  ", i18n::view_results()), true).clicked() {
                                 self.screen = Screen::Results;
                             }
-                            if theme::ghost_button(ui, p, "  Varrer de novo  ").clicked() {
+                            if theme::ghost_button(ui, p, &format!("  {}  ", i18n::scan_again())).clicked() {
                                 self.start_scan();
                             }
                         } else if theme::primary_button(ui, p, &format!("  {}  ", i18n::scan_cta()), true)
@@ -310,10 +332,7 @@ impl CleanerApp {
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(format_bytes(total)).font(display(22.0)).color(p.accent_ink()));
                             ui.label(
-                                RichText::new(format!(
-                                    "em caches encontrados, {}",
-                                    i18n::items(self.tree.root_nodes().len())
-                                ))
+                                RichText::new(i18n::found_summary(self.tree.root_nodes().len()))
                                 .color(p.muted),
                             );
                         });
@@ -329,20 +348,20 @@ impl CleanerApp {
             });
 
             ui.add_space(30.0);
-            ui.label(RichText::new("Onde o Cleaner procura").font(strong(16.0)).color(p.text));
+            ui.label(RichText::new(i18n::where_we_look()).font(strong(16.0)).color(p.text));
             ui.add_space(4.0);
             self.ui_category_tiles(ui, p);
 
             ui.add_space(26.0);
-            ui.label(RichText::new("Preferências").font(strong(16.0)).color(p.text));
+            ui.label(RichText::new(i18n::preferences()).font(strong(16.0)).color(p.text));
             ui.add_space(4.0);
             theme::card(p).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Idade mínima dos temporários").font(strong(14.0)));
+                        ui.label(RichText::new(i18n::temp_age_title()).font(strong(14.0)));
                         ui.label(
-                            RichText::new("Arquivos temporários mais novos que isso ficam de fora da varredura.")
+                            RichText::new(i18n::temp_age_body())
                                 .color(p.muted)
                                 .small(),
                         );
@@ -350,10 +369,28 @@ impl CleanerApp {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let resp = ui.add(
                             egui::Slider::new(&mut self.settings.temp_min_age_days, 0..=90)
-                                .suffix(" dias"),
+                                .suffix(i18n::days_suffix()),
                         );
                         if resp.drag_stopped() || (resp.changed() && !resp.dragged()) {
                             self.save_settings();
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
+                ui.painter().rect_filled(r, CornerRadius::ZERO, p.line);
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(i18n::language()).font(strong(14.0)));
+                        ui.label(RichText::new(i18n::language_body()).color(p.muted).small());
+                    });
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let current = cleaner_core::i18n::lang();
+                        for &l in Lang::all().iter().rev() {
+                            if theme::chip(ui, p, l.native_name(), current == l, None).clicked() && current != l {
+                                self.set_language(l);
+                            }
                         }
                     });
                 });
@@ -442,10 +479,10 @@ impl CleanerApp {
                         p.text,
                     );
                     let (value, value_font, value_color) = match status {
-                        None if self.scanning => ("Procurando…".to_string(), body(13.0), p.muted),
-                        None => ("Ainda não verificado".to_string(), body(13.0), p.muted),
+                        None if self.scanning => (i18n::tile_searching().to_string(), body(13.0), p.muted),
+                        None => (i18n::tile_not_checked().to_string(), body(13.0), p.muted),
                         Some(s) if s.available => (format_bytes(s.total_bytes), display(20.0), p.text),
-                        Some(_) => ("Nada encontrado".to_string(), body(13.0), p.muted),
+                        Some(_) => (i18n::tile_nothing().to_string(), body(13.0), p.muted),
                     };
                     painter.text(
                         Pos2::new(x, rect.bottom() - 14.0),
@@ -456,17 +493,17 @@ impl CleanerApp {
                     );
                     if let Some(s) = status.filter(|s| s.available) {
                         painter.text(
-                            Pos2::new(rect.right() - 14.0, rect.top() + 17.0),
-                            egui::Align2::RIGHT_TOP,
+                            Pos2::new(rect.right() - 14.0, rect.bottom() - 16.0),
+                            egui::Align2::RIGHT_BOTTOM,
                             i18n::items(s.item_count),
                             body(12.0),
                             p.muted,
                         );
                     }
                     let resp = if let Some(reason) = status.and_then(|s| s.unavailable_reason.as_ref()) {
-                        resp.on_hover_text(reason)
+                        resp.on_hover_text(reason.to_string())
                     } else if available {
-                        resp.on_hover_text("Ver só esta categoria").on_hover_cursor(egui::CursorIcon::PointingHand)
+                        resp.on_hover_text(i18n::tile_hover()).on_hover_cursor(egui::CursorIcon::PointingHand)
                     } else {
                         resp
                     };
@@ -501,17 +538,17 @@ impl CleanerApp {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.label(RichText::new("Será excluído").color(p.muted).small());
+                        ui.label(RichText::new(i18n::will_delete()).color(p.muted).small());
                         ui.label(RichText::new(format_bytes(bytes)).font(display(32.0)).color(p.accent_ink()));
                     });
                     ui.add_space(14.0);
                     ui.vertical(|ui| {
                         ui.add_space(8.0);
                         ui.spacing_mut().item_spacing.y = 2.0;
-                        ui.label(RichText::new(format!("{} marcados", i18n::items(count))).color(p.text));
+                        ui.label(RichText::new(i18n::marked(count)).color(p.text));
                         let pct = if total > 0 { bytes as f64 / total as f64 * 100.0 } else { 0.0 };
                         ui.label(
-                            RichText::new(format!("{pct:.0}% dos {} encontrados", format_bytes(total)))
+                            RichText::new(i18n::share_of_found(pct, &format_bytes(total)))
                                 .color(p.muted)
                                 .small(),
                         );
@@ -521,9 +558,9 @@ impl CleanerApp {
                         let enabled = count > 0 && !self.scanning;
                         let resp = theme::primary_button(ui, p, &format!("  {}  ", i18n::clean_cta()), enabled);
                         let resp = if self.scanning {
-                            resp.on_disabled_hover_text("Aguarde a varredura terminar")
+                            resp.on_disabled_hover_text(i18n::wait_for_scan())
                         } else {
-                            resp.on_disabled_hover_text("Marque ao menos um item")
+                            resp.on_disabled_hover_text(i18n::select_something())
                         };
                         if resp.clicked() {
                             self.screen = Screen::Confirm;
@@ -536,7 +573,7 @@ impl CleanerApp {
     fn ui_results(&mut self, ui: &mut egui::Ui, p: &Palette) {
         // Header
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Resultados").font(display(28.0)).color(p.text));
+            ui.label(RichText::new(i18n::results_title()).font(display(28.0)).color(p.text));
             ui.add_space(10.0);
             ui.vertical(|ui| {
                 ui.add_space(9.0);
@@ -544,20 +581,17 @@ impl CleanerApp {
                     if self.scanning {
                         ui.spinner();
                         ui.label(
-                            RichText::new(format!(
-                                "{} {} de {} categorias",
-                                i18n::scanning(),
+                            RichText::new(i18n::scanning_progress(
                                 self.categories_done,
-                                Category::all().len()
+                                Category::all().len(),
                             ))
                             .color(p.muted),
                         );
                     } else {
                         ui.label(
-                            RichText::new(format!(
-                                "{} em {}",
-                                format_bytes(self.tree.total_found()),
-                                i18n::items(self.tree.root_nodes().len())
+                            RichText::new(i18n::total_in(
+                                &format_bytes(self.tree.total_found()),
+                                self.tree.root_nodes().len(),
                             ))
                             .color(p.muted),
                         );
@@ -566,10 +600,10 @@ impl CleanerApp {
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if self.scanning {
-                    if theme::chip(ui, p, "Parar varredura", false, None).clicked() {
+                    if theme::chip(ui, p, i18n::stop_scan(), false, None).clicked() {
                         self.stop_scan();
                     }
-                } else if theme::chip(ui, p, "Varrer de novo", false, None).clicked() {
+                } else if theme::chip(ui, p, i18n::scan_again(), false, None).clicked() {
                     self.start_scan();
                 }
             });
@@ -602,7 +636,7 @@ impl CleanerApp {
                 });
             }
             if segs.len() > 7 {
-                ui.label(RichText::new(format!("+{} categorias", segs.len() - 7)).color(p.muted).small());
+                ui.label(RichText::new(i18n::more_categories(segs.len() - 7)).color(p.muted).small());
             }
         });
         ui.add_space(10.0);
@@ -659,10 +693,10 @@ impl CleanerApp {
                     .margin(egui::Margin::symmetric(10, 6)),
             );
             ui.add_space(4.0);
-            ui.label(RichText::new("Ordenar").color(p.muted));
+            ui.label(RichText::new(i18n::sort_by()).color(p.muted));
             egui::ComboBox::from_id_salt("sort")
                 .selected_text(i18n::sort_label(self.filter.sort))
-                .width(150.0)
+                .width(175.0)
                 .height(320.0)
                 .show_ui(ui, |ui| {
                     for &s in SortKey::all() {
@@ -671,17 +705,17 @@ impl CleanerApp {
                 });
             ui.add_space(4.0);
             let only = self.filter.only_selected;
-            if theme::chip(ui, p, "Só marcados", only, None).clicked() {
+            if theme::chip(ui, p, i18n::only_selected(), only, None).clicked() {
                 self.filter.only_selected = !only;
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if theme::chip(ui, p, "Desmarcar visíveis", false, None).clicked() {
+                if theme::chip(ui, p, i18n::unselect_visible(), false, None).clicked() {
                     for n in self.tree.visible_roots(&self.filter).iter().map(|n| n.id).collect::<Vec<_>>() {
                         self.tree.toggle(n, false);
                     }
                 }
-                if theme::chip(ui, p, "Marcar visíveis", false, None).clicked() {
+                if theme::chip(ui, p, i18n::select_visible(), false, None).clicked() {
                     for n in self.tree.visible_roots(&self.filter).iter().map(|n| n.id).collect::<Vec<_>>() {
                         self.tree.toggle(n, true);
                     }
@@ -703,14 +737,14 @@ impl CleanerApp {
 
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
-            if theme::chip(ui, p, "Todas", self.filter.categories.is_empty(), None).clicked() {
+            if theme::chip(ui, p, i18n::all_categories(), self.filter.categories.is_empty(), None).clicked() {
                 self.filter.categories.clear();
             }
             for cat in cats {
                 let on = self.filter.categories.contains(&cat);
                 let label = format!("{}  {}", i18n::category_name(cat), counts[&cat]);
                 if theme::chip(ui, p, &label, on, Some(theme::category_color(cat)))
-                    .on_hover_text("Clique para incluir ou remover do filtro")
+                    .on_hover_text(i18n::chip_toggle_hint())
                     .clicked()
                 {
                     if on {
@@ -748,7 +782,7 @@ impl CleanerApp {
             if !self.filter.is_default() {
                 ui.add_space(6.0);
                 if ui
-                    .add(egui::Label::new(RichText::new("Limpar filtros").color(p.accent_ink())).sense(Sense::click()))
+                    .add(egui::Label::new(RichText::new(i18n::clear_filters()).color(p.accent_ink())).sense(Sense::click()))
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
                 {
@@ -767,7 +801,7 @@ impl CleanerApp {
         if !missing.is_empty() && !self.scanning {
             ui.add_space(2.0);
             ui.label(
-                RichText::new(format!("Sem nada para limpar: {}", missing.join(", ")))
+                RichText::new(i18n::nothing_to_clean_in(&missing.join(", ")))
                     .color(p.muted)
                     .small(),
             );
@@ -780,14 +814,14 @@ impl CleanerApp {
             if self.scanning {
                 ui.spinner();
                 ui.add_space(8.0);
-                ui.label(RichText::new("Procurando caches. Os itens aparecem aqui conforme são encontrados.").color(p.muted));
+                ui.label(RichText::new(i18n::empty_scanning()).color(p.muted));
             } else if self.tree.nodes.is_empty() {
-                ui.label(RichText::new("Nada para limpar").font(strong(18.0)));
-                ui.label(RichText::new("Nenhum cache encontrado. Seu disco agradece.").color(p.muted));
+                ui.label(RichText::new(i18n::empty_title()).font(strong(18.0)));
+                ui.label(RichText::new(i18n::empty_body()).color(p.muted));
             } else {
-                ui.label(RichText::new("Nenhum item com esses filtros").font(strong(18.0)));
+                ui.label(RichText::new(i18n::empty_filtered()).font(strong(18.0)));
                 ui.add_space(6.0);
-                if theme::ghost_button(ui, p, "  Limpar filtros  ").clicked() {
+                if theme::ghost_button(ui, p, &format!("  {}  ", i18n::clear_filters())).clicked() {
                     let sort = self.filter.sort;
                     self.filter = ViewFilter { sort, ..Default::default() };
                 }
@@ -882,7 +916,7 @@ impl CleanerApp {
         let text_left = card.left() + 72.0;
         let text_w = pill_rect.left() - text_left - 16.0;
         let label_color = if blocked { p.muted } else { p.text };
-        let label = theme::truncated(ui, &node.label, body(14.5), label_color, text_w);
+        let label = theme::truncated(ui, &node.label.to_string(), body(14.5), label_color, text_w);
         painter.galley(Pos2::new(text_left, card.top() + 10.0), label, label_color);
         let mut sub = String::new();
         if row.depth == 0 {
@@ -895,14 +929,15 @@ impl CleanerApp {
 
         let resp = resp.on_hover_ui_at_pointer(|ui| {
             ui.set_max_width(360.0);
-            ui.label(RichText::new(&node.label).font(strong(14.0)));
-            if !node.reason.is_empty() {
-                ui.label(&node.reason);
+            ui.label(RichText::new(node.label.to_string()).font(strong(14.0)));
+            let reason = node.reason.to_string();
+            if !reason.is_empty() {
+                ui.label(reason);
             }
             ui.label(RichText::new(i18n::risk_hint(node.risk)).color(p.risk(node.risk)));
             if let Some(m) = node.modified {
                 ui.label(
-                    RichText::new(format!("Modificado em {}", m.format("%d/%m/%Y")))
+                    RichText::new(i18n::modified_on(&m.format(i18n::date_format()).to_string()))
                         .color(p.muted)
                         .small(),
                 );
@@ -934,7 +969,7 @@ impl CleanerApp {
 
                 theme::card(p).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Espaço a liberar").color(p.muted).small());
+                    ui.label(RichText::new(i18n::space_to_free()).color(p.muted).small());
                     ui.label(RichText::new(format_bytes(bytes)).font(display(44.0)).color(p.accent_ink()));
                     ui.add_space(10.0);
                     let max = by_cat.first().map(|c| c.1).unwrap_or(1).max(1);
@@ -942,7 +977,7 @@ impl CleanerApp {
                         ui.horizontal(|ui| {
                             let (r, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
                             ui.painter().circle_filled(r.center(), 4.5, theme::category_color(*cat));
-                            let (name_r, _) = ui.allocate_exact_size(Vec2::new(96.0, 18.0), Sense::hover());
+                            let (name_r, _) = ui.allocate_exact_size(Vec2::new(132.0, 18.0), Sense::hover());
                             ui.painter().text(
                                 name_r.left_center(),
                                 egui::Align2::LEFT_CENTER,
@@ -974,16 +1009,14 @@ impl CleanerApp {
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             ui.label(
-                                RichText::new(
-                                    "Há itens marcados como Revisar. Eles podem conter algo que você ainda usa.",
-                                )
+                                RichText::new(i18n::review_warning())
                                 .color(p.review),
                             );
                         });
                 }
 
                 ui.add_space(10.0);
-                egui::CollapsingHeader::new(RichText::new(format!("Ver os {}", i18n::items(count))).color(p.muted))
+                egui::CollapsingHeader::new(RichText::new(i18n::see_items(count)).color(p.muted))
                     .id_salt("confirm_items")
                     .show(ui, |ui| {
                         let mut nodes: Vec<&ScanNode> = targets.iter().filter_map(|id| self.tree.node(*id)).collect();
@@ -993,7 +1026,7 @@ impl CleanerApp {
                                 ui.horizontal(|ui| {
                                     let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
                                     ui.painter().circle_filled(r.center(), 3.5, theme::category_color(n.category));
-                                    ui.label(&n.label).on_hover_text(&n.detail);
+                                    ui.label(n.label.to_string()).on_hover_text(&n.detail);
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         ui.label(RichText::new(format_bytes(n.size_bytes)).color(p.muted));
                                     });
@@ -1004,11 +1037,11 @@ impl CleanerApp {
 
                 ui.add_space(18.0);
                 ui.horizontal(|ui| {
-                    if theme::ghost_button(ui, p, "  Voltar e revisar  ").clicked() {
+                    if theme::ghost_button(ui, p, &format!("  {}  ", i18n::back_and_review())).clicked() {
                         self.screen = Screen::Results;
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if theme::danger_button(ui, p, &format!("  Apagar {}  ", format_bytes(bytes))).clicked() {
+                        if theme::danger_button(ui, p, &format!("  {}  ", i18n::delete_size(&format_bytes(bytes)))).clicked() {
                             self.start_clean();
                         }
                     });
@@ -1031,7 +1064,7 @@ impl CleanerApp {
             theme::progress_bar(ui, p, shown, 10.0);
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{done} de {total}")).color(p.muted));
+                ui.label(RichText::new(i18n::done_of(done, total)).color(p.muted));
                 if !label.is_empty() {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let w = ui.available_width();
@@ -1068,7 +1101,7 @@ impl CleanerApp {
                 ui.add_space(24.0);
                 ui.label(RichText::new(i18n::report_title()).font(strong(16.0)).color(p.muted));
                 ui.label(RichText::new(format_bytes(shown as u64)).font(display(68.0)).color(p.safe));
-                ui.label(RichText::new("liberados no seu disco").color(p.muted));
+                ui.label(RichText::new(i18n::freed_on_disk()).color(p.muted));
                 ui.add_space(14.0);
 
                 ui.horizontal(|ui| {
@@ -1080,12 +1113,12 @@ impl CleanerApp {
                             });
                         });
                     };
-                    stat(ui, removed, "removidos", p.safe);
+                    stat(ui, removed, i18n::stat_removed(), p.safe);
                     if skipped > 0 {
-                        stat(ui, skipped, "ignorados", p.review);
+                        stat(ui, skipped, i18n::stat_skipped(), p.review);
                     }
                     if failed > 0 {
-                        stat(ui, failed, "com falha", p.danger);
+                        stat(ui, failed, i18n::stat_failed(), p.danger);
                     }
                 });
 
@@ -1115,7 +1148,7 @@ impl CleanerApp {
                                 let (r, _) = ui.allocate_exact_size(Vec2::new(8.0, 18.0), Sense::hover());
                                 ui.painter().circle_filled(r.center(), 4.0, color);
                                 ui.label(RichText::new(i18n::outcome_label(item.outcome)).color(color));
-                                ui.label(&item.label);
+                                ui.label(item.label.to_string());
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     if item.bytes_freed > 0 {
                                         ui.label(RichText::new(format_bytes(item.bytes_freed)).color(p.muted));
@@ -1125,7 +1158,7 @@ impl CleanerApp {
                             if let Some(m) = &item.message {
                                 ui.horizontal(|ui| {
                                     ui.add_space(16.0);
-                                    ui.label(RichText::new(m).color(p.muted).small());
+                                    ui.label(RichText::new(m.to_string()).color(p.muted).small());
                                 });
                             }
                         }
@@ -1139,7 +1172,7 @@ impl CleanerApp {
                         self.has_scanned = false;
                         self.screen = Screen::Home;
                     }
-                    if theme::primary_button(ui, p, "  Nova varredura  ", true).clicked() {
+                    if theme::primary_button(ui, p, &format!("  {}  ", i18n::new_scan()), true).clicked() {
                         self.start_scan();
                     }
                 });

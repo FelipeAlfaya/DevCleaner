@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::i18n::Msg;
 use crate::model::{Category, Risk, ScanNode};
 use crate::scanners::common::{emit_category_summary, path_node, send_nodes};
 use crate::settings::Settings;
@@ -19,7 +20,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
             tx,
             Category::Yarn,
             false,
-            Some("Cache Yarn não encontrado".into()),
+            Some(Msg::YarnNone.into()),
             &nodes,
         );
         return;
@@ -54,10 +55,10 @@ fn scan_classic(cache: &PathBuf, nodes: &mut Vec<ScanNode>) {
                 nodes.push(path_node(
                     Category::Yarn,
                     None,
-                    entry.file_name().to_string_lossy().into(),
+                    entry.file_name().to_string_lossy().to_string(),
                     path,
                     jail.clone(),
-                    "Pacote em cache Yarn Classic",
+                    Msg::YarnClassic,
                     Risk::Safe,
                     true,
                     false,
@@ -76,10 +77,10 @@ fn scan_berry(cache: &PathBuf, nodes: &mut Vec<ScanNode>) {
                 nodes.push(path_node(
                     Category::Yarn,
                     None,
-                    entry.file_name().to_string_lossy().into(),
+                    entry.file_name().to_string_lossy().to_string(),
                     path,
                     jail.clone(),
-                    "Pacote zip Yarn Berry",
+                    Msg::YarnBerry,
                     Risk::Safe,
                     true,
                     false,

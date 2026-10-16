@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_channel::Sender;
 
+use crate::i18n::{Msg, Text};
 use crate::model::{Category, NodeTarget, Risk, ScanNode};
 use crate::scanners::common::{emit_category_summary, list_children, path_node, send_nodes};
 use crate::settings::Settings;
@@ -36,10 +37,7 @@ pub fn scan(settings: &Settings, tx: &Sender<crate::model::ScanEvent>, cancel: &
                     format!("{} · {}", entry.file_name().to_string_lossy(), root.display()),
                     path,
                     jail.clone(),
-                    &format!(
-                        "Temporário com idade mínima de {} dias",
-                        settings.temp_min_age_days
-                    ),
+                    Text::with(Msg::TempReason, settings.temp_min_age_days.to_string()),
                     Risk::Safe,
                     true,
                     is_dir,
@@ -56,7 +54,7 @@ pub fn scan(settings: &Settings, tx: &Sender<crate::model::ScanEvent>, cancel: &
         if available {
             None
         } else {
-            Some("Nenhum temporário elegível encontrado".into())
+            Some(Msg::TempNone.into())
         },
         &nodes,
     );
@@ -73,7 +71,7 @@ pub fn expand(node: &ScanNode, settings: &Settings, tx: &Sender<crate::model::Sc
         node.id,
         path,
         jail_root.clone(),
-        "Conteúdo temporário",
+        Msg::TempContent,
         Risk::Safe,
         true,
         1,

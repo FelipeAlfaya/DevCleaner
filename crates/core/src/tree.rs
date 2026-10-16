@@ -30,7 +30,7 @@ impl SortKey {
 
     pub fn compare(self, a: &ScanNode, b: &ScanNode) -> Ordering {
         let by_size_desc = || b.size_bytes.cmp(&a.size_bytes);
-        let by_name = || a.label.to_lowercase().cmp(&b.label.to_lowercase());
+        let by_name = || a.label.to_string().to_lowercase().cmp(&b.label.to_string().to_lowercase());
         match self {
             SortKey::SizeDesc => by_size_desc().then_with(by_name),
             SortKey::SizeAsc => a.size_bytes.cmp(&b.size_bytes).then_with(by_name),
@@ -112,8 +112,13 @@ impl ScanTree {
             let inherited = node
                 .parent_id
                 .and_then(|p| self.selection.get(&p).copied());
-            let selected = node.risk != Risk::Blocked
-                && inherited.unwrap_or(node.default_selected);
+            // Only "Safe" items start checked; "Review" ones always wait for
+            // the user, whatever the scanner asked for.
+            let selected = match node.risk {
+                Risk::Blocked => false,
+                Risk::Review => inherited.unwrap_or(false),
+                Risk::Safe => inherited.unwrap_or(node.default_selected),
+            };
             self.selection.entry(node.id).or_insert(selected);
             if let Some(parent) = node.parent_id {
                 self.children.entry(parent).or_default().push(node.id);
@@ -287,7 +292,7 @@ impl ScanTree {
             return true;
         }
         let hit = |n: &ScanNode| {
-            n.label.to_lowercase().contains(needle) || n.detail.to_lowercase().contains(needle)
+            n.label.to_string().to_lowercase().contains(needle) || n.detail.to_lowercase().contains(needle)
         };
         hit(node)
             || self
@@ -343,6 +348,7 @@ impl ScanTree {
 mod tests {
     use super::*;
     use crate::model::{NodeTarget, DeleteStrategy};
+    use crate::i18n::Text;
 
     fn node(id: u64, parent: Option<u64>, size: u64, label: &str) -> ScanNode {
         ScanNode {
@@ -353,7 +359,7 @@ mod tests {
             detail: String::new(),
             size_bytes: size,
             modified: None,
-            reason: String::new(),
+            reason: Text::Raw(String::new()),
             risk: Risk::Safe,
             default_selected: true,
             expandable: parent.is_none(),
@@ -385,6 +391,17 @@ mod tests {
         t.toggle(1, false);
         t.ingest_nodes(vec![node(2, Some(1), 60, "a")]);
         assert!(!t.is_selected(2));
+    }
+
+    #[test]
+    fn review_items_start_unchecked() {
+        let mut t = ScanTree::default();
+        let mut n = node(1, None, 100, "vol");
+        n.risk = Risk::Review;
+        n.default_selected = true;
+        t.ingest_nodes(vec![n]);
+        assert!(!t.is_selected(1));
+        assert_eq!(t.selected_summary(), (0, 0));
     }
 
     #[test]

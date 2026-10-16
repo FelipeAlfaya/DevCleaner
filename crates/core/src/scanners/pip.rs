@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::i18n::Msg;
 use crate::model::{Category, Risk};
 use crate::scanners::common::{emit_category_summary, path_node, send_nodes};
 use crate::settings::Settings;
@@ -31,7 +32,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
                     format!("{} ({})", entry.file_name().to_string_lossy(), root.display()),
                     path,
                     jail.clone(),
-                    "Wheel/sdist em cache pip",
+                    Msg::PipEntry,
                     Risk::Safe,
                     true,
                     is_dir,
@@ -48,7 +49,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
         if available {
             None
         } else {
-            Some("Cache pip não encontrado".into())
+            Some(Msg::PipNone.into())
         },
         &nodes,
     );

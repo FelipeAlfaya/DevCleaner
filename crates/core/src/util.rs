@@ -119,7 +119,13 @@ pub fn format_bytes(bytes: u64) -> String {
     if unit == 0 {
         format!("{} {}", bytes, UNITS[0])
     } else {
-        format!("{:.1} {}", size, UNITS[unit])
+        let n = format!("{:.1}", size);
+        // Portuguese and Spanish use a decimal comma.
+        let n = match crate::i18n::lang() {
+            crate::i18n::Lang::En => n,
+            _ => n.replace('.', ","),
+        };
+        format!("{} {}", n, UNITS[unit])
     }
 }
 

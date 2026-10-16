@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_channel::Sender;
 
+use crate::i18n::Msg;
 use crate::model::{Category, NodeTarget, Risk, ScanNode};
 use crate::scanners::common::{emit_category_summary, list_children, path_node, send_nodes};
 use crate::settings::Settings;
@@ -25,7 +26,7 @@ pub fn scan(settings: &Settings, tx: &Sender<crate::model::ScanEvent>, cancel: &
                 sub.replace('/', " / "),
                 path.clone(),
                 cargo_home.clone(),
-                "Subárvore de cache Cargo",
+                Msg::CargoSubtree,
                 Risk::Safe,
                 true,
                 true,
@@ -41,7 +42,7 @@ pub fn scan(settings: &Settings, tx: &Sender<crate::model::ScanEvent>, cancel: &
         if available {
             None
         } else {
-            Some("CARGO_HOME não encontrado ou vazio".into())
+            Some(Msg::CargoNone.into())
         },
         &nodes,
     );
@@ -57,7 +58,7 @@ pub fn expand(node: &ScanNode, _settings: &Settings, tx: &Sender<crate::model::S
         node.id,
         path,
         jail_root.clone(),
-        "Entrada Cargo",
+        Msg::CargoEntry,
         Risk::Safe,
         true,
         1,

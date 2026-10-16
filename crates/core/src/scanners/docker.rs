@@ -1,5 +1,6 @@
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
+use crate::i18n::{Msg, Text};
 use crate::model::{
     Category, DeleteStrategy, NodeTarget, Risk, ScanNode,
 };
@@ -18,7 +19,7 @@ pub fn scan(settings: &Settings, tx: &crossbeam_channel::Sender<crate::model::Sc
             tx,
             Category::Docker,
             false,
-            Some("Docker CLI indisponível ou daemon parado".into()),
+            Some(Msg::DockerUnavailable.into()),
             &[],
         );
         return;
@@ -53,7 +54,7 @@ fn scan_images() -> Vec<ScanNode> {
     if !output.status.success() {
         return Vec::new();
     }
-    parse_docker_lines(&String::from_utf8_lossy(&output.stdout), DeleteStrategy::DockerImage, Risk::Safe, true)
+    parse_docker_lines(&String::from_utf8_lossy(&output.stdout), Msg::DockerImage, DeleteStrategy::DockerImage, Risk::Safe, true)
 }
 
 fn scan_containers() -> Vec<ScanNode> {
@@ -75,9 +76,12 @@ fn scan_containers() -> Vec<ScanNode> {
     };
     parse_docker_lines(
         &String::from_utf8_lossy(&output.stdout),
+        Msg::DockerContainer,
         DeleteStrategy::DockerContainer,
-        Risk::Safe,
-        true,
+        // `docker rm` discards everything written inside the container that
+        // is not in a volume (e.g. a dev database run without one).
+        Risk::Review,
+        false,
     )
 }
 
@@ -99,6 +103,7 @@ fn scan_running_containers() -> Vec<ScanNode> {
     }
     parse_docker_lines(
         &String::from_utf8_lossy(&output.stdout),
+        Msg::DockerContainer,
         DeleteStrategy::DockerContainer,
         Risk::Blocked,
         false,
@@ -120,8 +125,8 @@ fn scan_volumes() -> Vec<ScanNode> {
         .filter(|l| !l.trim().is_empty())
         .map(|id| docker_node(
             id.trim(),
-            format!("Volume órfão {id}"),
-            "Volume Docker sem referência — pode conter dados de banco",
+            Text::with(Msg::DockerVolumeLabel, id),
+            Msg::DockerVolumeReason,
             DeleteStrategy::DockerVolume,
             Risk::Review,
             false,
@@ -150,8 +155,8 @@ fn scan_build_cache() -> Vec<ScanNode> {
             let size = parse_docker_size(size_str);
             Some(docker_node(
                 id,
-                format!("Build cache {id}"),
-                "Entrada de build cache Docker",
+                Text::with(Msg::DockerBuildCacheLabel, id),
+                Msg::DockerBuildCacheReason,
                 DeleteStrategy::DockerBuildCache,
                 Risk::Safe,
                 true,
@@ -163,6 +168,7 @@ fn scan_build_cache() -> Vec<ScanNode> {
 
 fn parse_docker_lines(
     text: &str,
+    reason: Msg,
     strategy: DeleteStrategy,
     risk: Risk,
     default_selected: bool,
@@ -178,14 +184,14 @@ fn parse_docker_lines(
             let label = if name.is_empty() {
                 id.to_string()
             } else if tag.is_empty() {
-                format!("{name}")
+                name.to_string()
             } else {
                 format!("{name}:{tag}")
             };
             Some(docker_node(
                 id,
                 label,
-                "Objeto Docker gerenciado via CLI",
+                reason,
                 strategy,
                 risk,
                 default_selected,
@@ -197,8 +203,8 @@ fn parse_docker_lines(
 
 fn docker_node(
     id: &str,
-    label: String,
-    reason: &str,
+    label: impl Into<Text>,
+    reason: Msg,
     strategy: DeleteStrategy,
     risk: Risk,
     default_selected: bool,
@@ -208,11 +214,11 @@ fn docker_node(
         id: next_id(),
         parent_id: None,
         category: Category::Docker,
-        label,
+        label: label.into(),
         detail: id.to_string(),
         size_bytes,
         modified: None,
-        reason: reason.to_string(),
+        reason: reason.into(),
         risk,
         default_selected,
         expandable: false,
