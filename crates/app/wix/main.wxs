@@ -129,11 +129,13 @@
                         Id='DevCleanerShortcut'
                         Name='DevCleaner'
                         Description='Find and safely clean the caches development tools leave on your disk'
-                        Target='[Bin]devcleaner.exe'
+                        Target='[#exe0]'
                         WorkingDirectory='Bin'
                         Icon='ProductICO'/>
+                    <!-- Shortcuts live in a per-user location for Windows Installer, so
+                         the component needs an HKCU key as its KeyPath (ICE38/ICE43). -->
                     <RegistryValue
-                        Root='HKLM'
+                        Root='HKCU'
                         Key='Software\DevCleaner'
                         Name='StartMenuShortcut'
                         Type='integer'
