@@ -1,0 +1,47 @@
+use std::fs;
+use std::path::PathBuf;
+
+use directories::ProjectDirs;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    pub temp_min_age_days: u32,
+    pub dark_theme: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            temp_min_age_days: 7,
+            dark_theme: true,
+        }
+    }
+}
+
+impl Settings {
+    pub fn config_path() -> Option<PathBuf> {
+        ProjectDirs::from("dev", "cleaner", "cleaner").map(|d| d.config_dir().join("settings.json"))
+    }
+
+    pub fn load() -> Self {
+        let Some(path) = Self::config_path() else {
+            return Self::default();
+        };
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self) -> std::io::Result<()> {
+        let Some(path) = Self::config_path() else {
+            return Ok(());
+        };
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(path, json)
+    }
+}

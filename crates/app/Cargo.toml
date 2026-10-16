@@ -1,0 +1,15 @@
+[package]
+name = "cleaner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cleaner"
+path = "src/main.rs"
+
+[dependencies]
+cleaner-core = { path = "../core" }
+crossbeam-channel.workspace = true
+eframe = { version = "0.31", default-features = true, features = ["default_fonts", "glow"] }
+egui = "0.31"
