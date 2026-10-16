@@ -4,6 +4,26 @@ All notable changes to DevCleaner are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.0 - 2026-10-16
+
+### Added
+
+- **Experimental GPUI interface** (`devcleaner-gpui`, in `crates/gpui-app`): the whole app rebuilt with [GPUI](https://www.gpui.rs), the UI framework of the Zed editor. Same screens, languages and visual identity, with GPU rendering, a virtualized result list, menus and tooltips. It is not part of the release packages yet; run it with `cargo run -p devcleaner-gpui`.
+  - Buttons fade with a 0.2s opacity transition on hover; chips turn yellow on hover, like the selected one.
+  - Draggable scrollbars on every scrolling screen.
+  - A proper spinner while scanning, aligned with the status text.
+  - The layered chart on the home screen rises layer by layer when the screen opens.
+
+### Changed
+
+- Dependencies are optimized in debug builds (`[profile.dev.package."*"] opt-level = 2`), so `cargo run` is smooth. The first build after this change takes longer.
+- Release builds only compile the released app (`precise-builds`).
+- CI installs the Linux libraries GPUI needs and uses `actions/checkout@v5`.
+
+### Fixed
+
+- `gpui` depends on `xattr` 0.2, which no longer builds on Linux with current `libc`; the workspace patches it with a vendored copy in `vendor/xattr`.
+
 ## 0.2.0 - 2026-10-16
 
 ### Added

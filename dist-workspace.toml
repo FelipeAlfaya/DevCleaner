@@ -23,3 +23,6 @@ install-updater = false
 allow-dirty = ["msi"]
 # Pull requests only check that the release plan is valid.
 pr-run-mode = "plan"
+# Build only the released package (devcleaner). The GPUI app in
+# crates/gpui-app is not released yet and needs extra system libraries.
+precise-builds = true

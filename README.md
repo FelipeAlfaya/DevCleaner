@@ -193,6 +193,24 @@ The [release workflow](.github/workflows/release.yml) builds every target, the M
 
 Configuration lives in `dist-workspace.toml`. The MSI template in `crates/app/wix/main.wxs` is customized (Start Menu shortcut and icon, no PATH entry), so `dist` is told not to regenerate it. Never change its `UpgradeCode`: that is how a new MSI replaces the installed version. After upgrading `dist`, run `dist generate` to refresh the workflow.
 
+## Experimental GPUI interface
+
+A new interface built with [GPUI](https://www.gpui.rs), the UI framework of the Zed editor, lives in `crates/gpui-app`. It uses the same core, the same three languages and the same visual identity, with GPU rendering, a virtualized result list and hover animations. It is not released yet; the published app is still the egui one in `crates/app`.
+
+To try it:
+
+```sh
+cargo run -p devcleaner-gpui
+```
+
+On Linux it needs a few system libraries:
+
+```sh
+sudo apt install libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libfontconfig-dev libfreetype-dev libvulkan-dev
+```
+
+`gpui` 0.2 depends on `xattr` 0.2, which no longer builds on Linux with current `libc` releases. The workspace patches it with a vendored copy in `vendor/xattr` that only maps the missing constant (see the comment in the root `Cargo.toml`).
+
 ## Preferences
 
 The scan profile, the minimum age of temporary files, the theme (light or dark) and the language are saved in `settings.json`:
@@ -225,6 +243,8 @@ crates/
     ├── assets/         # window icon
     ├── wix/            # MSI template and app icon
     └── build.rs        # embeds the icon in the Windows executable
+crates/gpui-app/        # devcleaner-gpui: experimental GPUI interface
+vendor/xattr/           # patched dependency of gpui (see "Experimental GPUI interface")
 .github/workflows/      # CI and release automation
 dist-workspace.toml     # release configuration
 ```
