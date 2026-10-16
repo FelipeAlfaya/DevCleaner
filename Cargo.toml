@@ -6,6 +6,9 @@ members = ["crates/core", "crates/app"]
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
+authors = ["Felipe Alfaya"]
+repository = "https://github.com/FelipeAlfaya/AlfaCleaner"
+homepage = "https://github.com/FelipeAlfaya/AlfaCleaner"
 
 [workspace.dependencies]
 crossbeam-channel = "0.5"
@@ -15,3 +18,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

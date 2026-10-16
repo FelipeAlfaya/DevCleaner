@@ -6,6 +6,38 @@ A desktop app that finds the caches development tools leave on your disk (packag
 
 Built in Rust with [egui](https://github.com/emilk/egui). Windows is the main target, and it also builds on Linux and macOS. The interface is available in English, Portuguese and Spanish.
 
+## Install
+
+Download the latest version from the [Releases page](https://github.com/FelipeAlfaya/AlfaCleaner/releases/latest).
+
+| System | File |
+| --- | --- |
+| Windows (installer) | `devcleaner-x86_64-pc-windows-msvc.msi`: installs DevCleaner and adds it to the Start Menu |
+| Windows (portable) | `devcleaner-x86_64-pc-windows-msvc.zip`: unzip and run `devcleaner.exe` |
+| Linux | `devcleaner-x86_64-unknown-linux-gnu.tar.xz` |
+| macOS (Apple Silicon) | `devcleaner-aarch64-apple-darwin.tar.xz` |
+| macOS (Intel) | `devcleaner-x86_64-apple-darwin.tar.xz` |
+
+Or install from a terminal. On Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/FelipeAlfaya/AlfaCleaner/releases/latest/download/devcleaner-installer.ps1 | iex"
+```
+
+On Linux and macOS:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/FelipeAlfaya/AlfaCleaner/releases/latest/download/devcleaner-installer.sh | sh
+```
+
+The terminal installers put the program in `~/.devcleaner/bin`.
+
+Every file has a `.sha256` checksum next to it on the Releases page.
+
+> **Windows SmartScreen.** DevCleaner is not code-signed yet, so the first time you open the installer or the app Windows may show "Windows protected your PC". Click **More info** and then **Run anyway**. The warning fades as more people download each release.
+
+DevCleaner is mainly built for Windows: the WSL and Docker Desktop disk features only work there. Everything else works on Linux and macOS too.
+
 ## Why
 
 Every package manager keeps its own cache in its own place, and none of them cleans up after itself. After a few years it is common to have tens of GB sitting in `~/.gradle`, `~/.cargo/registry`, `~/.m2` and the system temp folder without noticing. DevCleaner puts all of it on one screen and lets you decide item by item.
@@ -125,10 +157,10 @@ You need stable Rust (1.82 or newer), installed with [rustup](https://rustup.rs)
 ```sh
 git clone <repository-url>
 cd cleaner
-cargo run --release -p cleaner
+cargo run --release -p devcleaner
 ```
 
-The executable ends up in `target/release/cleaner` (`cleaner.exe` on Windows). Release builds on Windows open without a console window.
+The executable ends up in `target/release/devcleaner` (`devcleaner.exe` on Windows). Release builds on Windows open without a console window.
 
 On Linux, eframe needs the X11/Wayland and OpenGL development libraries. On Debian/Ubuntu:
 
@@ -141,6 +173,25 @@ sudo apt install libxkbcommon-dev libgl1-mesa-dev libxcursor-dev libxrandr-dev l
 ```sh
 cargo test
 ```
+
+Every push and pull request is built and tested on Windows, Linux and macOS by the [CI workflow](.github/workflows/ci.yml).
+
+## Releasing
+
+Releases are built and published by GitHub Actions with [dist](https://github.com/axodotdev/cargo-dist). To publish a new version:
+
+1. Update `version` in the root `Cargo.toml`.
+2. Add a section for that version to `CHANGELOG.md`, for example `## 0.3.0 - 2026-11-20`. Its contents become the release notes.
+3. Commit, then tag and push:
+
+   ```sh
+   git tag v0.3.0
+   git push origin master --tags
+   ```
+
+The [release workflow](.github/workflows/release.yml) builds every target, the MSI and the installers, and creates the GitHub Release with all files and checksums. A version with a suffix such as `0.3.0-beta.1` is published as a prerelease.
+
+Configuration lives in `dist-workspace.toml`. The MSI template in `crates/app/wix/main.wxs` is customized (Start Menu shortcut and icon, no PATH entry), so `dist` is told not to regenerate it. Never change its `UpgradeCode`: that is how a new MSI replaces the installed version. After upgrading `dist`, run `dist generate` to refresh the workflow.
 
 ## Preferences
 
@@ -166,11 +217,16 @@ crates/
 │       ├── i18n.rs     # languages and every text the core produces
 │       ├── profiles.rs # scan profiles
 │       └── settings.rs
-└── app/             # cleaner: egui interface
-    └── src/
-        ├── app.rs      # screens and flow
-        ├── theme.rs    # palette, fonts and hand-drawn components
-        └── i18n.rs     # interface texts
+└── app/             # devcleaner: egui interface
+    ├── src/
+    │   ├── app.rs      # screens and flow
+    │   ├── theme.rs    # palette, fonts and hand-drawn components
+    │   └── i18n.rs     # interface texts
+    ├── assets/         # window icon
+    ├── wix/            # MSI template and app icon
+    └── build.rs        # embeds the icon in the Windows executable
+.github/workflows/      # CI and release automation
+dist-workspace.toml     # release configuration
 ```
 
 The core does not depend on the interface, so it can back another UI or a CLI.

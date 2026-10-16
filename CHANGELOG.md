@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - The Docker Desktop virtual disk is listed even when Docker is closed, and the custom disk location set in Docker Desktop is respected.
   - Tagged images that no container uses are listed, marked Review.
 - **Scan profiles.** Everything, Package managers, JavaScript, Python, Java / Kotlin, Rust / Go, Docker and WSL, IDEs and AI, and Custom. In Custom, categories are picked by clicking them on the home screen. The profile is saved in Preferences.
+- **Automated releases.** Pushing a version tag builds DevCleaner for Windows, Linux and macOS and publishes a GitHub Release with an MSI installer, a portable zip, archives for Linux and macOS, one-line PowerShell and shell installers, checksums, and release notes taken from this changelog.
+- CI that builds and tests every push and pull request on Windows, Linux and macOS.
+- An app icon, used by the window, the executable, the Start Menu shortcut and the Windows installed apps list.
 - README, MIT license and this changelog.
 
 ### Changed
@@ -35,7 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Stopped Docker containers are now marked Review and start unselected, because `docker rm` discards anything written inside them outside volumes.
 - The Go module cache is cleared with `go clean -modcache` instead of deleting folders, since Go writes it read-only.
 - The Go caches are located with `go env GOCACHE` and `go env GOMODCACHE`.
-- The app is now called DevCleaner.
+- The app is now called DevCleaner, and the executable is `devcleaner` (`devcleaner.exe` on Windows). Saved preferences are kept.
 - Buttons and filters grow slightly when hovered and shrink when pressed, and everything clickable shows a hand cursor.
 - The project is licensed under MIT only.
 - Release builds on Windows open without a console window.

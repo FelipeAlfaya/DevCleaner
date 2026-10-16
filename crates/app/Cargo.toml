@@ -1,12 +1,26 @@
 [package]
-name = "cleaner"
+name = "devcleaner"
+description = "Find and safely clean the caches development tools leave on your disk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+
+[package.metadata.wix]
+upgrade-guid = "86850F67-EDAC-4766-BCB3-EAF212C02AA3"
+path-guid = "6ACD6130-309B-45FB-A99F-D78BF10CF51C"
+license = false
+eula = false
 
 [[bin]]
-name = "cleaner"
+name = "devcleaner"
 path = "src/main.rs"
+
+[build-dependencies]
+winresource = "0.1"
 
 [dependencies]
 cleaner-core = { path = "../core" }
