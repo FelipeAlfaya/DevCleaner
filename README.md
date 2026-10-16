@@ -189,7 +189,7 @@ Releases are built and published by GitHub Actions with [dist](https://github.co
    git push origin master --tags
    ```
 
-The [release workflow](.github/workflows/release.yml) builds every target, the MSI and the installers, and creates the GitHub Release with all files and checksums. A version with a suffix such as `0.3.0-beta.1` is published as a prerelease.
+The [release workflow](.github/workflows/release.yml) builds every target, the MSI and the installers, and creates the GitHub Release with all files and checksums. The tag must match the version in `Cargo.toml` exactly: tag `v0.3.0` for version `0.3.0`. To publish a prerelease, set the version to something like `0.3.0-beta.1` and tag `v0.3.0-beta.1`; it is marked as a prerelease on GitHub. If any build fails, nothing is published: delete the tag, fix the problem and push the tag again.
 
 Configuration lives in `dist-workspace.toml`. The MSI template in `crates/app/wix/main.wxs` is customized (Start Menu shortcut and icon, no PATH entry), so `dist` is told not to regenerate it. Never change its `UpgradeCode`: that is how a new MSI replaces the installed version. After upgrading `dist`, run `dist generate` to refresh the workflow.
 
