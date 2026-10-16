@@ -250,16 +250,25 @@ impl ScanTree {
         let bytes = targets
             .iter()
             .filter_map(|id| self.node(*id))
+            .filter(|n| !n.is_vhd())
             .map(|n| n.size_bytes)
             .sum();
         (targets.len(), bytes)
+    }
+
+    /// Selected virtual disks (compacted, not deleted).
+    pub fn selected_vhds(&self) -> Vec<u64> {
+        self.targets()
+            .into_iter()
+            .filter(|id| self.node(*id).is_some_and(|n| n.is_vhd()))
+            .collect()
     }
 
     /// Bytes that would be removed, per category.
     pub fn selected_by_category(&self) -> HashMap<Category, u64> {
         let mut map = HashMap::new();
         for id in self.targets() {
-            if let Some(n) = self.node(id) {
+            if let Some(n) = self.node(id).filter(|n| !n.is_vhd()) {
                 *map.entry(n.category).or_insert(0) += n.size_bytes;
             }
         }
@@ -269,14 +278,18 @@ impl ScanTree {
     /// Bytes found per category (top-level items only).
     pub fn found_by_category(&self) -> HashMap<Category, u64> {
         let mut map = HashMap::new();
-        for n in self.root_nodes() {
+        for n in self.root_nodes().into_iter().filter(|n| !n.is_vhd()) {
             *map.entry(n.category).or_insert(0) += n.size_bytes;
         }
         map
     }
 
     pub fn total_found(&self) -> u64 {
-        self.root_nodes().iter().map(|n| n.size_bytes).sum()
+        self.root_nodes()
+            .iter()
+            .filter(|n| !n.is_vhd())
+            .map(|n| n.size_bytes)
+            .sum()
     }
 
     pub fn root_nodes(&self) -> Vec<&ScanNode> {
@@ -402,6 +415,19 @@ mod tests {
         t.ingest_nodes(vec![n]);
         assert!(!t.is_selected(1));
         assert_eq!(t.selected_summary(), (0, 0));
+    }
+
+    #[test]
+    fn virtual_disks_are_not_counted_as_deleted_space() {
+        let mut t = ScanTree::default();
+        let mut disk = node(1, None, 40_000, "docker_data.vhdx");
+        disk.target = NodeTarget::Vhd { path: "docker_data.vhdx".into() };
+        disk.risk = Risk::Review;
+        t.ingest_nodes(vec![disk, node(2, None, 100, "cache")]);
+        t.toggle(1, true);
+        assert_eq!(t.selected_summary(), (2, 100));
+        assert_eq!(t.selected_vhds(), vec![1]);
+        assert_eq!(t.total_found(), 100);
     }
 
     #[test]

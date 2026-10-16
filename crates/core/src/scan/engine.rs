@@ -4,7 +4,7 @@ use std::thread;
 
 use crossbeam_channel::Receiver;
 
-use crate::model::{Category, ScanEvent};
+use crate::model::ScanEvent;
 use crate::scanners;
 use crate::settings::Settings;
 
@@ -25,10 +25,10 @@ pub fn start_scan(settings: Settings) -> ScanHandle {
     let cancel_worker = cancel.clone();
 
     thread::spawn(move || {
-        let categories = Category::all();
+        let categories = settings.scan_categories();
         let mut handles = Vec::new();
 
-        for &category in categories {
+        for category in categories {
             if cancel_worker.load(Ordering::Relaxed) {
                 break;
             }

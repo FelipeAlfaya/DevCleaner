@@ -132,7 +132,8 @@ pub fn emit_category_summary(
     reason: Option<Text>,
     nodes: &[ScanNode],
 ) {
-    let total_bytes: u64 = nodes.iter().map(|n| n.size_bytes).sum();
+    let total_bytes: u64 = nodes.iter().filter(|n| !n.is_vhd()).map(|n| n.size_bytes).sum();
+    let disk_bytes: u64 = nodes.iter().filter(|n| n.is_vhd()).map(|n| n.size_bytes).sum();
     send_status(
         tx,
         CategoryStatus {
@@ -141,6 +142,7 @@ pub fn emit_category_summary(
             unavailable_reason: reason,
             total_bytes,
             item_count: nodes.len(),
+            disk_bytes,
         },
     );
 }

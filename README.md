@@ -1,6 +1,6 @@
-# Cleaner
+# DevCleaner
 
-A desktop app that finds the caches development tools leave on your disk (npm, Cargo, Gradle, Docker and 10 more), shows how much each one takes and only deletes what you approve.
+A desktop app that finds the caches development tools leave on your disk (package managers, Docker, WSL, code editors and AI apps), shows how much each one takes and only deletes what you approve.
 
 ![Scan results: a bar with space per category, filters and a list sorted from largest to smallest](docs/screenshots/results.png)
 
@@ -8,11 +8,11 @@ Built in Rust with [egui](https://github.com/emilk/egui). Windows is the main ta
 
 ## Why
 
-Every package manager keeps its own cache in its own place, and none of them cleans up after itself. After a few years it is common to have tens of GB sitting in `~/.gradle`, `~/.cargo/registry`, `~/.m2` and the system temp folder without noticing. Cleaner puts all of it on one screen and lets you decide item by item.
+Every package manager keeps its own cache in its own place, and none of them cleans up after itself. After a few years it is common to have tens of GB sitting in `~/.gradle`, `~/.cargo/registry`, `~/.m2` and the system temp folder without noticing. DevCleaner puts all of it on one screen and lets you decide item by item.
 
 ## How it works
 
-1. **Scan.** The 14 categories are checked in parallel, and results show up as they are found.
+1. **Scan.** Pick a [scan profile](#scan-profiles) or scan everything. Categories are checked in parallel, and results show up as they are found.
 2. **Review.** The list comes sorted from largest to smallest. You can open folders, select and unselect items, filter and sort. The footer always shows the exact total that will be deleted.
 3. **Confirm.** Before deleting, a screen sums up the space each category will free and warns you if any selected item is marked **Review**.
 4. **Report.** At the end you see the space freed and what happened to each item: removed, skipped or failed, and why.
@@ -39,10 +39,47 @@ Every package manager keeps its own cache in its own place, and none of them cle
 | Go | `go env GOCACHE` and `go env GOMODCACHE` | `go clean -cache` and `go clean -modcache` |
 | NuGet | `~/.nuget/packages` | Package folders |
 | Composer | `composer config cache-dir` | Cache files |
-| Docker | Dangling images, stopped containers, orphan volumes and build cache | `docker` commands; stopped containers and orphan volumes are marked **Review** |
+| Docker | Docker Desktop virtual disk, dangling and unused images, stopped containers, orphan volumes and build cache | `docker` commands; the virtual disk is [compacted](#docker-and-wsl-virtual-disks); unused images, stopped containers and orphan volumes are marked **Review** |
+| WSL | Virtual disk of each distro, and dev caches inside running distros | Cache folders inside the distro; the virtual disk is [compacted](#docker-and-wsl-virtual-disks) |
+| IDEs and AI apps | Cursor, VS Code, VSCodium, Windsurf, Antigravity, Trae, Kiro, Claude desktop and Claude Code | Cache, log and update folders; workspace state, Cursor's code index and Claude Code history are marked **Review** |
 | Temporary files | `TEMP`, `TMP`, `TMPDIR` | Only items older than the configured minimum age (7 days by default) |
 
 If a tool is not installed or has no cache, its category shows "Nothing found".
+
+### Docker and WSL virtual disks
+
+On Windows, Docker Desktop and every WSL distro keep their files inside a virtual disk (`.vhdx`). The file grows as images, containers and Linux files are written, but **it never shrinks on its own**: after deleting 30 GB of images, the disk still takes 30 GB on Windows. That is why Docker can take so much space even after months without use.
+
+DevCleaner lists these disks, including Docker Desktop's when it is closed and when its disk was moved to another drive (Settings > Resources > Advanced > Disk image location). Selecting a disk **compacts** it:
+
+1. Items deleted in the same cleanup are removed first (for example images or caches inside a distro), so their space can be reclaimed.
+2. WSL is shut down with `wsl --shutdown`, which also stops Docker Desktop. Save anything open in WSL before.
+3. `diskpart` attaches each disk read-only and runs `compact vdisk`. Windows asks for administrator permission once for all selected disks.
+4. The report shows how much each disk actually shrank.
+
+Compacting reads the whole disk, so it can take a while: from a few minutes on an SSD to half an hour or more for a large disk on a hard drive. The confirmation screen shows an estimated time based on the disk size, and while it runs DevCleaner shows the progress reported by `diskpart` (or the elapsed time, when that is not available). Do not close DevCleaner or turn off the computer until it finishes.
+
+Nothing inside the disks is deleted. Compacting only gives back blocks that are already free.
+
+For the best result, free space inside first: delete unused Docker images and build cache (or run `docker system prune`) and the caches inside your distros, then compact in the same cleanup or the next one.
+
+Disks converted to sparse files (`wsl --manage <distro> --set-sparse true`) may refuse to be compacted; when that happens the report shows the disk as failed.
+
+## Scan profiles
+
+A profile limits the scan to the categories you care about. It is chosen on the home screen and saved in Preferences.
+
+| Profile | Categories |
+| --- | --- |
+| Everything | All categories |
+| Package managers | npm, Yarn, pnpm, Bun, pip, uv, Cargo, Gradle, Maven, Go, NuGet, Composer |
+| JavaScript | npm, Yarn, pnpm, Bun |
+| Python | pip, uv |
+| Java / Kotlin | Gradle, Maven |
+| Rust / Go | Cargo, Go |
+| Docker and WSL | Docker, WSL |
+| IDEs and AI | IDEs and AI apps |
+| Custom | The categories you click on the home screen |
 
 ## Safety
 
@@ -51,7 +88,7 @@ An app that deletes files has to be conservative. These are the rules:
 - **Nothing is deleted without confirmation.** Scanning only reads the disk.
 - **Every item has a risk level.**
   - **Safe**: the tool downloads or rebuilds it when needed. Starts selected.
-  - **Review**: may hold something that only exists there, such as Maven artifacts installed locally with `mvn install`, stopped Docker containers (`docker rm` discards anything written inside them outside volumes) or orphan Docker volumes (which may hold database data). Always starts unselected, whatever the scanner says.
+  - **Review**: may hold something that only exists there, such as Maven artifacts installed locally with `mvn install`, stopped Docker containers (`docker rm` discards anything written inside them outside volumes), orphan Docker volumes (which may hold database data), Cursor's AI chat history or Claude Code conversations. Virtual disks are also Review, because compacting them shuts WSL down. Always starts unselected, whatever the scanner says.
   - **Blocked**: cannot be selected, for example running Docker containers.
 - **Everything stays inside the cache root.** Before removing a path, the core resolves its real location (following `..` and links) and refuses if it leaves the category root or lands in system folders (`System32`, `Program Files`, `/usr/bin`, `/etc` and so on). Symbolic links are not followed while scanning.
 - **When a tool has its own cleanup command, that command is used** instead of deleting files by hand (npm, pnpm, Go and Docker).
@@ -66,7 +103,7 @@ Deleting caches marked **Safe** should only cost time: the next build downloads 
 - Re-downloading needs internet access, and dependencies from private feeds (NuGet, npm, Go with `GOPRIVATE`) need your credentials set up.
 - Offline builds (`gradle --offline`, `cargo --offline`) fail until the cache is filled again.
 - A version pinned in a lockfile that was later removed from its registry cannot be downloaded again.
-- Close IDEs and running builds before cleaning. Files they hold open fail to delete and show up as "Failed" in the report.
+- Close IDEs, AI apps and running builds before cleaning. Files they hold open fail to delete and show up as "Failed" in the report.
 
 ## Using the results screen
 
@@ -77,7 +114,7 @@ Deleting caches marked **Safe** should only cost time: the next build downloads 
 
 ## Languages
 
-Cleaner speaks English, Portuguese (pt-BR) and Spanish. On first run it follows the operating system language, falling back to English. You can switch at any time from the language menu in the top bar or in Preferences, and the whole screen updates immediately, including results you already scanned.
+DevCleaner speaks English, Portuguese (pt-BR) and Spanish. On first run it follows the operating system language, falling back to English. You can switch at any time from the language menu in the top bar or in Preferences, and the whole screen updates immediately, including results you already scanned.
 
 Sizes follow the language: `1.5 GB` in English, `1,5 GB` in Portuguese and Spanish.
 
@@ -107,7 +144,7 @@ cargo test
 
 ## Preferences
 
-The minimum age of temporary files, the theme (light or dark) and the language are saved in `settings.json`:
+The scan profile, the minimum age of temporary files, the theme (light or dark) and the language are saved in `settings.json`:
 
 | System | Path |
 | --- | --- |
@@ -121,12 +158,13 @@ The minimum age of temporary files, the theme (light or dark) and the language a
 crates/
 ├── core/            # cleaner-core: scanning, selection and deletion, no UI
 │   └── src/
-│       ├── scanners/   # one module per category (npm.rs, cargo.rs, docker.rs, …)
+│       ├── scanners/   # one module per category (npm.rs, docker.rs, wsl.rs, ide.rs, …)
 │       ├── scan/       # runs the scanners in threads
 │       ├── tree.rs     # result tree, selection, filters and sorting
 │       ├── delete.rs   # runs the cleanup
 │       ├── safety.rs   # path checks before deleting
 │       ├── i18n.rs     # languages and every text the core produces
+│       ├── profiles.rs # scan profiles
 │       └── settings.rs
 └── app/             # cleaner: egui interface
     └── src/
@@ -146,7 +184,7 @@ Contributions are welcome: issues, fixes, new scanners and translation fixes.
 1. Create `crates/core/src/scanners/<name>.rs` with a `scan` function that sends `ScanNode`s through the channel. Use `path_node` and `list_children` from `common.rs`.
 2. Add the variant to `Category` (`model.rs`) and register it in `Category::all()` and `scanners::run_category`.
 3. If its items can be opened, implement `expand` and register it in `scanners::expand_node`.
-4. Give the category a name in `app/src/i18n.rs` (`category_name`) and a color in `theme::category_color`.
+4. Give the category a name in `app/src/i18n.rs` (`category_name`) and a color in `theme::category_color`, and add it to the matching profiles in `core/src/profiles.rs`.
 5. Add its texts (reasons, "not found" message) to `Msg` in `core/src/i18n.rs`, in all three languages.
 6. Pick the risk carefully. When in doubt, use `Risk::Review`.
 
@@ -157,9 +195,9 @@ User-facing text never lives as a plain string in the code:
 - **Core** texts are `Msg` variants in `crates/core/src/i18n.rs`. Scanners store a `Text` (a message, a message with an argument, or raw data such as a file name), and it is translated only when displayed.
 - **Interface** texts are functions in `crates/app/src/i18n.rs`.
 
-Both use `pick(pt, es, en)`, so a missing translation is a compile error. For now Cleaner supports only these three languages.
+Both use `pick(pt, es, en)`, so a missing translation is a compile error. For now DevCleaner supports only these three languages.
 
-Before opening a PR, run `cargo test` and `cargo clippy`.
+Before opening a PR, run `cargo test` and `cargo clippy`. Notable changes go in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

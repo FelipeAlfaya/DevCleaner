@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::Text;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Category {
     Npm,
     Yarn,
@@ -20,6 +20,8 @@ pub enum Category {
     NuGet,
     Composer,
     Docker,
+    Wsl,
+    Ide,
     Temp,
 }
 
@@ -39,6 +41,8 @@ impl Category {
             Category::NuGet,
             Category::Composer,
             Category::Docker,
+            Category::Wsl,
+            Category::Ide,
             Category::Temp,
         ]
     }
@@ -58,6 +62,8 @@ impl Category {
             Category::NuGet => "nuget",
             Category::Composer => "composer",
             Category::Docker => "docker",
+            Category::Wsl => "wsl",
+            Category::Ide => "ide",
             Category::Temp => "temp",
         }
     }
@@ -81,6 +87,9 @@ pub enum DeleteStrategy {
     DockerContainer,
     DockerVolume,
     DockerBuildCache,
+    /// Shrinks a WSL/Docker virtual disk (VHDX) so Windows gets back the
+    /// space freed inside it. Nothing is deleted.
+    CompactVhd,
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +106,18 @@ pub enum NodeTarget {
         category: Category,
         strategy: DeleteStrategy,
     },
+    /// A WSL or Docker Desktop virtual disk. Selecting it compacts the file.
+    Vhd {
+        path: PathBuf,
+    },
+}
+
+impl ScanNode {
+    /// Virtual disks are compacted, not deleted: their size is not space
+    /// that a cleanup frees, so totals leave them out.
+    pub fn is_vhd(&self) -> bool {
+        matches!(self.target, NodeTarget::Vhd { .. })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +151,8 @@ pub struct CategoryStatus {
     pub unavailable_reason: Option<Text>,
     pub total_bytes: u64,
     pub item_count: usize,
+    /// Size of virtual disks found (compacted, not deleted).
+    pub disk_bytes: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -162,12 +185,27 @@ pub struct DeleteResultItem {
 }
 
 #[derive(Debug, Clone)]
+pub struct CompactProgress {
+    /// Index of the disk being compacted (0-based).
+    pub disk: usize,
+    pub disks: usize,
+    pub label: Text,
+    pub elapsed_secs: u64,
+    /// Rough (fastest, slowest) total time for every selected disk.
+    pub estimate_secs: (u64, u64),
+    /// Percentage reported by diskpart for the current disk, when readable.
+    pub percent: Option<u8>,
+}
+
+#[derive(Debug, Clone)]
 pub enum DeleteEvent {
     Progress {
         done: usize,
         total: usize,
         current_label: Text,
     },
+    /// Sent about twice a second while virtual disks are being compacted.
+    Compacting(CompactProgress),
     Item(DeleteResultItem),
     Finished,
 }

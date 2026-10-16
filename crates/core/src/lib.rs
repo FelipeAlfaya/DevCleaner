@@ -1,6 +1,7 @@
 pub mod delete;
 pub mod i18n;
 pub mod model;
+pub mod profiles;
 pub mod safety;
 pub mod scan;
 pub mod scanners;
@@ -8,9 +9,10 @@ pub mod settings;
 pub mod tree;
 pub mod util;
 
-pub use delete::{DeleteHandle, start_delete};
+pub use delete::{compact_estimate_all, start_delete, DeleteHandle};
 pub use i18n::{Lang, Msg, Text};
 pub use model::*;
+pub use profiles::ScanProfile;
 pub use scan::{ScanHandle, start_scan};
 pub use settings::Settings;
 pub use tree::{ScanTree, SortKey, ViewFilter, VisibleRow};

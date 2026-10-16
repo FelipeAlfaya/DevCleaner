@@ -5,6 +5,7 @@ mod composer;
 mod docker;
 mod go;
 mod gradle;
+mod ide;
 mod maven;
 mod npm;
 mod nuget;
@@ -12,6 +13,8 @@ mod pip;
 mod pnpm;
 mod temp;
 mod uv;
+mod vhd;
+mod wsl;
 mod yarn;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,6 +47,8 @@ pub fn run_category(
         Category::NuGet => nuget::scan(settings, tx, cancel),
         Category::Composer => composer::scan(settings, tx, cancel),
         Category::Docker => docker::scan(settings, tx, cancel),
+        Category::Wsl => wsl::scan(settings, tx, cancel),
+        Category::Ide => ide::scan(settings, tx, cancel),
         Category::Temp => temp::scan(settings, tx, cancel),
     }
 }
@@ -54,6 +59,8 @@ pub fn expand_node(node: &ScanNode, settings: &Settings, tx: &Sender<ScanEvent>)
         Category::Maven => maven::expand(node, settings, tx),
         Category::Gradle => gradle::expand(node, settings, tx),
         Category::Cargo => cargo::expand(node, settings, tx),
+        Category::Ide => ide::expand(node, settings, tx),
+        Category::Wsl => wsl::expand(node, settings, tx),
         _ => {}
     }
 }

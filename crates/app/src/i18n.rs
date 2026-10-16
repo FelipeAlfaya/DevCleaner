@@ -7,10 +7,10 @@
 
 use cleaner_core::i18n::{lang, pick, Lang};
 use cleaner_core::model::{Category, DeleteOutcome, Risk};
-use cleaner_core::SortKey;
+use cleaner_core::{ScanProfile, SortKey};
 
 pub fn app_title() -> &'static str {
-    "Cleaner"
+    "DevCleaner"
 }
 
 /// Picks a format string per language and fills it.
@@ -56,6 +56,8 @@ pub fn category_name(c: Category) -> &'static str {
         Category::NuGet => "NuGet",
         Category::Composer => "Composer",
         Category::Docker => "Docker",
+        Category::Wsl => "WSL",
+        Category::Ide => pick("IDEs e apps de IA", "IDEs y apps de IA", "IDEs and AI apps"),
         Category::Temp => pick("Temporários", "Temporales", "Temporary files"),
     }
 }
@@ -81,9 +83,9 @@ pub fn risk_hint(r: Risk) -> &'static str {
             "Check first: it may hold something that only exists here.",
         ),
         Risk::Blocked => pick(
-            "Protegido: o Cleaner não apaga este item.",
-            "Protegido: Cleaner no borra este elemento.",
-            "Protected: Cleaner does not delete this item.",
+            "Protegido: o DevCleaner não apaga este item.",
+            "Protegido: DevCleaner no borra este elemento.",
+            "Protected: DevCleaner does not delete this item.",
         ),
     }
 }
@@ -105,6 +107,193 @@ pub fn sort_label(s: SortKey) -> &'static str {
         SortKey::Category => pick("Categoria", "Categoría", "Category"),
         SortKey::Risk => pick("Risco", "Riesgo", "Risk"),
     }
+}
+
+// ------------------------------------------------------------ profiles
+
+pub fn profile_name(p: ScanProfile) -> &'static str {
+    match p {
+        ScanProfile::Full => pick("Completo", "Completo", "Everything"),
+        ScanProfile::PackageManagers => pick("Gerenciadores de pacotes", "Gestores de paquetes", "Package managers"),
+        ScanProfile::JavaScript => "JavaScript",
+        ScanProfile::Python => "Python",
+        ScanProfile::Jvm => "Java / Kotlin",
+        ScanProfile::RustGo => "Rust / Go",
+        ScanProfile::Containers => pick("Docker e WSL", "Docker y WSL", "Docker and WSL"),
+        ScanProfile::Editors => pick("IDEs e IA", "IDEs e IA", "IDEs and AI"),
+        ScanProfile::Custom => pick("Personalizado", "Personalizado", "Custom"),
+    }
+}
+
+pub fn profile_hint(p: ScanProfile) -> &'static str {
+    match p {
+        ScanProfile::Full => pick("Todas as categorias", "Todas las categorías", "Every category"),
+        ScanProfile::PackageManagers => pick(
+            "Caches de npm, Yarn, pnpm, Bun, pip, uv, Cargo, Gradle, Maven, Go, NuGet e Composer",
+            "Cachés de npm, Yarn, pnpm, Bun, pip, uv, Cargo, Gradle, Maven, Go, NuGet y Composer",
+            "npm, Yarn, pnpm, Bun, pip, uv, Cargo, Gradle, Maven, Go, NuGet and Composer caches",
+        ),
+        ScanProfile::JavaScript => "npm, Yarn, pnpm, Bun",
+        ScanProfile::Python => "pip, uv",
+        ScanProfile::Jvm => "Gradle, Maven",
+        ScanProfile::RustGo => "Cargo, Go",
+        ScanProfile::Containers => pick(
+            "Discos virtuais, imagens, containers e volumes",
+            "Discos virtuales, imágenes, contenedores y volúmenes",
+            "Virtual disks, images, containers and volumes",
+        ),
+        ScanProfile::Editors => pick(
+            "Cursor, VS Code, Windsurf, Antigravity, Trae, Claude e outros",
+            "Cursor, VS Code, Windsurf, Antigravity, Trae, Claude y otros",
+            "Cursor, VS Code, Windsurf, Antigravity, Trae, Claude and more",
+        ),
+        ScanProfile::Custom => pick(
+            "Clique nas categorias abaixo para escolher",
+            "Haz clic en las categorías de abajo para elegir",
+            "Click the categories below to choose",
+        ),
+    }
+}
+
+pub fn scan_profile() -> &'static str {
+    pick("Perfil de varredura", "Perfil de análisis", "Scan profile")
+}
+
+pub fn profile_tag(name: &str) -> String {
+    tf!("Perfil: {name}", "Perfil: {name}", "Profile: {name}")
+}
+
+pub fn outside_profile() -> &'static str {
+    pick("Fora do perfil", "Fuera del perfil", "Not in profile")
+}
+
+pub fn tile_toggle_include() -> &'static str {
+    pick("Clique para incluir na varredura", "Haz clic para incluir en el análisis", "Click to include in the scan")
+}
+
+pub fn tile_toggle_exclude() -> &'static str {
+    pick("Clique para tirar da varredura", "Haz clic para quitar del análisis", "Click to leave out of the scan")
+}
+
+pub fn empty_profile() -> &'static str {
+    pick(
+        "Escolha ao menos uma categoria",
+        "Elige al menos una categoría",
+        "Pick at least one category",
+    )
+}
+
+// ------------------------------------------------------------ virtual disks
+
+pub fn vhd_pill() -> &'static str {
+    pick("Compactar", "Compactar", "Compact")
+}
+
+pub fn disk_size(size: &str) -> String {
+    tf!("disco virtual: {size}", "disco virtual: {size}", "virtual disk: {size}")
+}
+
+pub fn plus_disks(n: usize) -> String {
+    match (lang(), n) {
+        (Lang::Pt, 1) => "+ 1 disco virtual para compactar".into(),
+        (Lang::Pt, _) => format!("+ {n} discos virtuais para compactar"),
+        (Lang::Es, 1) => "+ 1 disco virtual para compactar".into(),
+        (Lang::Es, _) => format!("+ {n} discos virtuales para compactar"),
+        (Lang::En, 1) => "+ 1 virtual disk to compact".into(),
+        (Lang::En, _) => format!("+ {n} virtual disks to compact"),
+    }
+}
+
+pub fn disks_to_compact() -> &'static str {
+    pick("Discos virtuais para compactar", "Discos virtuales para compactar", "Virtual disks to compact")
+}
+
+pub fn compact_warning() -> &'static str {
+    pick(
+        "Para compactar, o DevCleaner desliga o WSL (e com ele o Docker Desktop) e o Windows vai pedir permissão de administrador. Salve o que estiver aberto no WSL antes. Nada é apagado dos discos: só o espaço livre dentro deles volta para o Windows.",
+        "Para compactar, DevCleaner apaga WSL (y con él Docker Desktop) y Windows pedirá permiso de administrador. Guarda lo que tengas abierto en WSL antes. No se borra nada de los discos: solo el espacio libre dentro de ellos vuelve a Windows.",
+        "To compact, DevCleaner shuts WSL down (and Docker Desktop with it) and Windows will ask for administrator permission. Save anything open in WSL first. Nothing is deleted from the disks: only the free space inside them goes back to Windows.",
+    )
+}
+
+pub fn compact_disks(n: usize) -> String {
+    match (lang(), n) {
+        (Lang::Pt, 1) => "Compactar 1 disco".into(),
+        (Lang::Pt, _) => format!("Compactar {n} discos"),
+        (Lang::Es, 1) => "Compactar 1 disco".into(),
+        (Lang::Es, _) => format!("Compactar {n} discos"),
+        (Lang::En, 1) => "Compact 1 disk".into(),
+        (Lang::En, _) => format!("Compact {n} disks"),
+    }
+}
+
+pub fn delete_and_compact(size: &str) -> String {
+    tf!("Apagar {size} e compactar", "Borrar {size} y compactar", "Delete {size} and compact")
+}
+
+pub fn duration(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    if h > 0 {
+        format!("{h} h {m:02} min")
+    } else if m >= 10 || (m > 0 && s == 0) {
+        format!("{m} min")
+    } else if m > 0 {
+        format!("{m} min {s:02} s")
+    } else {
+        format!("{s} s")
+    }
+}
+
+/// Rounds an estimate to something a person reads at a glance.
+fn rough(secs: u64) -> String {
+    if secs < 60 {
+        duration(secs.max(10).div_ceil(10) * 10)
+    } else {
+        let mins = secs.div_ceil(60);
+        let mins = if mins > 20 { mins.div_ceil(5) * 5 } else { mins };
+        duration(mins * 60)
+    }
+}
+
+pub fn compact_estimate(fast: u64, slow: u64) -> String {
+    let (a, b) = (rough(fast), rough(slow));
+    tf!("Tempo estimado: de {a} a {b}", "Tiempo estimado: de {a} a {b}", "Estimated time: {a} to {b}")
+}
+
+pub fn compact_slow_note() -> &'static str {
+    pick(
+        "A compactação lê o disco inteiro, então pode demorar bastante: depende do tamanho do disco e de ele estar num SSD ou num HD. Não feche o DevCleaner nem desligue o computador até terminar.",
+        "La compactación lee el disco entero, así que puede tardar bastante: depende del tamaño del disco y de si está en un SSD o en un HDD. No cierres DevCleaner ni apagues el equipo hasta que termine.",
+        "Compacting reads the whole disk, so it can take a long time depending on the disk size and on whether it sits on an SSD or a hard drive. Do not close DevCleaner or turn off the computer until it finishes.",
+    )
+}
+
+pub fn compacting_title() -> &'static str {
+    pick("Compactando discos virtuais", "Compactando discos virtuales", "Compacting virtual disks")
+}
+
+pub fn compacting_disk(i: usize, n: usize) -> String {
+    tf!("Disco {i} de {n}", "Disco {i} de {n}", "Disk {i} of {n}")
+}
+
+pub fn elapsed(d: &str) -> String {
+    tf!("Decorrido: {d}", "Transcurrido: {d}", "Elapsed: {d}")
+}
+
+pub fn waiting_admin() -> &'static str {
+    pick(
+        "Aguardando a permissão de administrador e o desligamento do WSL…",
+        "Esperando el permiso de administrador y el apagado de WSL…",
+        "Waiting for administrator permission and for WSL to shut down…",
+    )
+}
+
+pub fn past_estimate() -> &'static str {
+    pick(
+        "Está levando mais que o previsto. Isso é normal em discos grandes ou em HD; a compactação continua.",
+        "Está tardando más de lo previsto. Es normal en discos grandes o en HDD; la compactación continúa.",
+        "This is taking longer than expected. That is normal for large disks or hard drives; compaction is still running.",
+    )
 }
 
 // ------------------------------------------------------------ top bar
@@ -145,9 +334,9 @@ pub fn hero_title() -> &'static str {
 
 pub fn hero_body() -> &'static str {
     pick(
-        "O Cleaner procura caches de npm, Cargo, Gradle, Docker e outros 10 gerenciadores, mostra quanto cada um ocupa e só apaga o que você aprovar.",
-        "Cleaner busca las cachés de npm, Cargo, Gradle, Docker y otros 10 gestores, muestra cuánto ocupa cada una y solo borra lo que tú apruebes.",
-        "Cleaner finds the caches left by npm, Cargo, Gradle, Docker and 10 other tools, shows how much each one takes and only deletes what you approve.",
+        "O DevCleaner procura caches de npm, Cargo, Gradle e outros gerenciadores de pacotes, do Docker, do WSL e de editores como Cursor e VS Code, mostra quanto cada um ocupa e só apaga o que você aprovar.",
+        "DevCleaner busca las cachés de npm, Cargo, Gradle y otros gestores de paquetes, de Docker, de WSL y de editores como Cursor y VS Code, muestra cuánto ocupa cada una y solo borra lo que tú apruebes.",
+        "DevCleaner finds the caches left by npm, Cargo, Gradle and other package managers, Docker, WSL and editors such as Cursor and VS Code, shows how much each one takes and only deletes what you approve.",
     )
 }
 
@@ -181,7 +370,7 @@ pub fn found_summary(n: usize) -> String {
 }
 
 pub fn where_we_look() -> &'static str {
-    pick("Onde o Cleaner procura", "Dónde busca Cleaner", "Where Cleaner looks")
+    pick("Onde o DevCleaner procura", "Dónde busca DevCleaner", "Where DevCleaner looks")
 }
 
 pub fn tile_searching() -> &'static str {

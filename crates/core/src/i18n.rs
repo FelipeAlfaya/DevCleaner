@@ -1,4 +1,4 @@
-//! Languages supported by Cleaner and the texts produced by the core.
+//! Languages supported by DevCleaner and the texts produced by the core.
 //!
 //! The core never stores translated strings. Scanners and the delete engine
 //! emit [`Text`] values (a message key, optionally with an argument, or raw
@@ -197,6 +197,28 @@ pub enum Msg {
     DockerVolumeReason,
     DockerBuildCacheLabel,
     DockerBuildCacheReason,
+    DockerDiskLabel,
+    DockerDiskReason,
+    DockerUnusedImage,
+    // WSL
+    WslWindowsOnly,
+    WslNone,
+    WslDiskLabel,
+    WslDiskReason,
+    WslCache,
+    // Virtual disk compaction
+    VhdCompacting,
+    VhdCompactFailed,
+    VhdNothingFreed,
+    VhdWindowsOnly,
+    // IDEs and AI apps
+    IdeCache,
+    IdeUpdater,
+    IdeWorkspaceStorage,
+    IdeWorkspaceEntry,
+    IdeCursorIndex,
+    IdeClaudeCodeProjects,
+    IdeNone,
     // Temporary files
     TempReason,
     TempContent,
@@ -318,6 +340,81 @@ impl Msg {
                 "Docker build cache entry",
             ),
 
+            DockerDiskLabel => pick(
+                "Disco virtual do Docker Desktop ({})",
+                "Disco virtual de Docker Desktop ({})",
+                "Docker Desktop virtual disk ({})",
+            ),
+            DockerDiskReason => pick(
+                "Onde o Docker Desktop guarda imagens, containers e volumes. O arquivo cresce mas não diminui sozinho, mesmo depois de apagar imagens. Marcar compacta o disco: nada é apagado, mas o WSL e o Docker são desligados e o Windows pede permissão de administrador",
+                "Donde Docker Desktop guarda imágenes, contenedores y volúmenes. El archivo crece pero no se reduce solo, ni siquiera tras borrar imágenes. Marcarlo compacta el disco: no se borra nada, pero WSL y Docker se apagan y Windows pide permiso de administrador",
+                "Where Docker Desktop keeps images, containers and volumes. The file grows but never shrinks on its own, even after deleting images. Selecting it compacts the disk: nothing is deleted, but WSL and Docker are shut down and Windows asks for administrator permission",
+            ),
+            DockerUnusedImage => pick(
+                "Imagem que nenhum container usa. Volta com docker pull quando precisar",
+                "Imagen que ningún contenedor usa. Vuelve con docker pull cuando la necesites",
+                "Image no container uses. Comes back with docker pull when needed",
+            ),
+            WslWindowsOnly => pick("Disponível só no Windows", "Disponible solo en Windows", "Windows only"),
+            WslNone => pick("Nenhuma distro WSL encontrada", "No se encontró ninguna distro de WSL", "No WSL distro found"),
+            WslDiskLabel => pick("Disco virtual da distro {}", "Disco virtual de la distro {}", "Virtual disk of the {} distro"),
+            WslDiskReason => pick(
+                "O arquivo da distro cresce mas não diminui sozinho. Marcar compacta o disco: nada é apagado, mas o WSL é desligado e o Windows pede permissão de administrador",
+                "El archivo de la distro crece pero no se reduce solo. Marcarlo compacta el disco: no se borra nada, pero WSL se apaga y Windows pide permiso de administrador",
+                "The distro file grows but never shrinks on its own. Selecting it compacts the disk: nothing is deleted, but WSL is shut down and Windows asks for administrator permission",
+            ),
+            WslCache => pick(
+                "Cache dentro da distro. Depois de apagar, compacte o disco da distro para o Windows recuperar o espaço",
+                "Caché dentro de la distro. Después de borrar, compacta el disco de la distro para que Windows recupere el espacio",
+                "Cache inside the distro. After deleting, compact the distro disk so Windows gets the space back",
+            ),
+            VhdCompacting => pick("Compactando discos virtuais…", "Compactando discos virtuales…", "Compacting virtual disks…"),
+            VhdCompactFailed => pick(
+                "A compactação falhou ou a permissão de administrador foi negada",
+                "La compactación falló o se denegó el permiso de administrador",
+                "Compaction failed or administrator permission was denied",
+            ),
+            VhdNothingFreed => pick(
+                "Nada a recuperar: o disco já estava compacto",
+                "Nada que recuperar: el disco ya estaba compacto",
+                "Nothing to reclaim: the disk was already compact",
+            ),
+            VhdWindowsOnly => pick("Compactação disponível só no Windows", "Compactación disponible solo en Windows", "Compaction is Windows only"),
+            IdeCache => pick(
+                "Cache que o app recria sozinho. Feche o app antes de limpar",
+                "Caché que la app recrea sola. Cierra la app antes de limpiar",
+                "Cache the app rebuilds on its own. Close the app before cleaning",
+            ),
+            IdeUpdater => pick(
+                "Instaladores de atualização já baixados",
+                "Instaladores de actualización ya descargados",
+                "Update installers already downloaded",
+            ),
+            IdeWorkspaceStorage => pick(
+                "Estado salvo de cada projeto aberto no editor. No Cursor inclui o histórico de chat da IA daquele projeto",
+                "Estado guardado de cada proyecto abierto en el editor. En Cursor incluye el historial de chat de la IA de ese proyecto",
+                "Saved state of each project opened in the editor. In Cursor it includes that project's AI chat history",
+            ),
+            IdeWorkspaceEntry => pick(
+                "Estado salvo deste projeto no editor",
+                "Estado guardado de este proyecto en el editor",
+                "Saved editor state of this project",
+            ),
+            IdeCursorIndex => pick(
+                "Índice local do código usado pela IA do Cursor. É refeito ao abrir o projeto de novo",
+                "Índice local del código que usa la IA de Cursor. Se rehace al abrir el proyecto de nuevo",
+                "Local code index used by Cursor's AI. Rebuilt when the project is opened again",
+            ),
+            IdeClaudeCodeProjects => pick(
+                "Histórico das conversas do Claude Code, uma pasta por projeto. Apagar impede retomar essas conversas",
+                "Historial de las conversaciones de Claude Code, una carpeta por proyecto. Borrarlo impide retomar esas conversaciones",
+                "Claude Code conversation history, one folder per project. Deleting it means those conversations can no longer be resumed",
+            ),
+            IdeNone => pick(
+                "Nenhum cache de editor ou app de IA encontrado",
+                "No se encontró ninguna caché de editores o apps de IA",
+                "No editor or AI app cache found",
+            ),
             TempReason => pick(
                 "Temporário com mais de {} dias",
                 "Temporal con más de {} días",

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use cleaner_core::scanners;
 use cleaner_core::{
-    format_bytes, start_delete, Lang, start_scan, Category, CheckState, DeleteEvent, DeleteHandle,
+    format_bytes, start_delete, CompactProgress, Lang, ScanProfile, start_scan, Category, CheckState, DeleteEvent, DeleteHandle,
     DeleteOutcome, DeleteResultItem, Risk, ScanEvent, ScanHandle, ScanNode, ScanTree, Settings,
     SortKey, ViewFilter, VisibleRow,
 };
@@ -41,10 +41,16 @@ pub struct CleanerApp {
     delete_handle: Option<DeleteHandle>,
     delete_results: Vec<DeleteResultItem>,
     delete_progress: (usize, usize, String),
+    /// Latest compaction progress and when it arrived (to tick the clock
+    /// between updates).
+    compact: Option<(CompactProgress, std::time::Instant)>,
     filter: ViewFilter,
     scanning: bool,
     cleaning: bool,
     categories_done: usize,
+    /// Categories and profile of the last scan started.
+    scan_total: usize,
+    scanned_profile: ScanProfile,
     has_scanned: bool,
     expand_tx: crossbeam_channel::Sender<Vec<ScanNode>>,
     expand_rx: crossbeam_channel::Receiver<Vec<ScanNode>>,
@@ -63,10 +69,13 @@ impl CleanerApp {
             delete_handle: None,
             delete_results: Vec::new(),
             delete_progress: (0, 0, String::new()),
+            compact: None,
             filter: ViewFilter::default(),
             scanning: false,
             cleaning: false,
             categories_done: 0,
+            scan_total: 0,
+            scanned_profile: ScanProfile::Full,
             has_scanned: false,
             expand_tx,
             expand_rx,
@@ -85,6 +94,8 @@ impl CleanerApp {
         }
         self.tree.clear();
         self.categories_done = 0;
+        self.scan_total = self.settings.scan_categories().len();
+        self.scanned_profile = self.settings.profile;
         self.scanning = true;
         self.has_scanned = true;
         self.screen = Screen::Results;
@@ -152,6 +163,7 @@ impl CleanerApp {
         let nodes = self.tree.nodes.clone();
         self.delete_results.clear();
         self.delete_progress = (0, targets.len(), String::new());
+        self.compact = None;
         self.cleaning = true;
         self.screen = Screen::Cleaning;
         self.delete_handle = Some(start_delete(nodes, targets));
@@ -168,6 +180,7 @@ impl CleanerApp {
                         current_label,
                     } => self.delete_progress = (done, total, current_label.to_string()),
                     DeleteEvent::Item(item) => self.delete_results.push(item),
+                    DeleteEvent::Compacting(c) => self.compact = Some((c, std::time::Instant::now())),
                     DeleteEvent::Finished => finished = true,
                 }
             }
@@ -190,6 +203,26 @@ impl CleanerApp {
         self.settings.language = Some(lang);
         cleaner_core::i18n::set_lang(lang);
         self.save_settings();
+    }
+
+    fn ui_profile_picker(&mut self, ui: &mut egui::Ui, p: &Palette) {
+        ui.label(RichText::new(i18n::scan_profile()).font(strong(13.0)).color(p.muted));
+        ui.add_space(2.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+            for &prof in ScanProfile::all() {
+                let on = self.settings.profile == prof;
+                if theme::chip(ui, p, i18n::profile_name(prof), on, None)
+                    .on_hover_text(i18n::profile_hint(prof))
+                    .clicked()
+                    && !on
+                {
+                    self.settings.profile = prof;
+                    self.save_settings();
+                }
+            }
+        });
+        ui.label(RichText::new(i18n::profile_hint(self.settings.profile)).color(p.muted).small());
     }
 
     fn language_menu(&mut self, ui: &mut egui::Ui) {
@@ -271,7 +304,7 @@ impl CleanerApp {
                             ui.label(
                                 RichText::new(i18n::scanning_short(
                                     self.categories_done,
-                                    Category::all().len(),
+                                    self.scan_total,
                                 ))
                                 .color(p.muted),
                             );
@@ -306,9 +339,12 @@ impl CleanerApp {
                         .font(body(15.0))
                         .color(p.muted),
                     );
-                    ui.add_space(22.0);
+                    ui.add_space(18.0);
+                    self.ui_profile_picker(ui, p);
+                    ui.add_space(16.0);
 
                     let total = self.tree.total_found();
+                    let can_scan = !self.settings.scan_categories().is_empty();
                     ui.horizontal(|ui| {
                         if self.scanning {
                             if theme::primary_button(ui, p, &format!("  {}  ", i18n::view_scan_in_progress()), true).clicked() {
@@ -318,10 +354,11 @@ impl CleanerApp {
                             if theme::primary_button(ui, p, &format!("  {}  ", i18n::view_results()), true).clicked() {
                                 self.screen = Screen::Results;
                             }
-                            if theme::ghost_button(ui, p, &format!("  {}  ", i18n::scan_again())).clicked() {
+                            if theme::ghost_button(ui, p, &format!("  {}  ", i18n::scan_again())).clicked() && can_scan {
                                 self.start_scan();
                             }
-                        } else if theme::primary_button(ui, p, &format!("  {}  ", i18n::scan_cta()), true)
+                        } else if theme::primary_button(ui, p, &format!("  {}  ", i18n::scan_cta()), can_scan)
+                            .on_disabled_hover_text(i18n::empty_profile())
                             .clicked()
                         {
                             self.start_scan();
@@ -454,7 +491,10 @@ impl CleanerApp {
             });
         }
 
+        let in_profile_list = self.settings.scan_categories();
+        let custom = self.settings.profile == ScanProfile::Custom;
         let mut go_to: Option<Category> = None;
+        let mut toggle: Option<Category> = None;
         for row in cats.chunks(cols) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
@@ -462,12 +502,23 @@ impl CleanerApp {
                     let (rect, resp) = ui.allocate_exact_size(Vec2::new(tile_w, tile_h), Sense::click());
                     let status = self.tree.category_status.get(&cat);
                     let available = status.is_some_and(|s| s.available);
+                    let in_profile = in_profile_list.contains(&cat);
+                    let clickable = custom || (available && in_profile);
                     let painter = ui.painter();
-                    let fill = if resp.hovered() && available { p.raised } else { p.surface };
-                    painter.rect(rect, CornerRadius::same(12), fill, Stroke::new(1.0_f32, p.line), StrokeKind::Inside);
+                    let fill = match (in_profile, resp.hovered() && clickable) {
+                        (_, true) => p.raised,
+                        (true, false) => p.surface,
+                        (false, false) => p.bg,
+                    };
+                    let border = if custom && in_profile { p.accent_ink() } else { p.line };
+                    painter.rect(rect, CornerRadius::same(12), fill, Stroke::new(1.0_f32, border), StrokeKind::Inside);
                     let color = theme::category_color(cat);
                     let stripe = Rect::from_min_size(rect.min + Vec2::new(14.0, 16.0), Vec2::new(4.0, tile_h - 32.0));
-                    let stripe_color = if status.is_some() && !available { mix(color, p.surface, 0.7) } else { color };
+                    let stripe_color = if !in_profile || (status.is_some() && !available) {
+                        mix(color, p.surface, 0.7)
+                    } else {
+                        color
+                    };
                     painter.rect_filled(stripe, CornerRadius::same(2), stripe_color);
 
                     let x = rect.left() + 30.0;
@@ -476,9 +527,13 @@ impl CleanerApp {
                         egui::Align2::LEFT_TOP,
                         i18n::category_name(cat),
                         strong(14.0),
-                        p.text,
+                        if in_profile { p.text } else { p.muted },
                     );
                     let (value, value_font, value_color) = match status {
+                        _ if !in_profile => (i18n::outside_profile().to_string(), body(13.0), p.muted),
+                        Some(s) if s.available && s.total_bytes == 0 && s.disk_bytes > 0 => {
+                            (i18n::disk_size(&format_bytes(s.disk_bytes)), body(13.0), p.text)
+                        }
                         None if self.scanning => (i18n::tile_searching().to_string(), body(13.0), p.muted),
                         None => (i18n::tile_not_checked().to_string(), body(13.0), p.muted),
                         Some(s) if s.available => (format_bytes(s.total_bytes), display(20.0), p.text),
@@ -500,19 +555,35 @@ impl CleanerApp {
                             p.muted,
                         );
                     }
-                    let resp = if let Some(reason) = status.and_then(|s| s.unavailable_reason.as_ref()) {
+                    let resp = if custom {
+                        let hint = if in_profile { i18n::tile_toggle_exclude() } else { i18n::tile_toggle_include() };
+                        resp.on_hover_text(hint).on_hover_cursor(egui::CursorIcon::PointingHand)
+                    } else if let Some(reason) = status.and_then(|s| s.unavailable_reason.as_ref()) {
                         resp.on_hover_text(reason.to_string())
-                    } else if available {
+                    } else if available && in_profile {
                         resp.on_hover_text(i18n::tile_hover()).on_hover_cursor(egui::CursorIcon::PointingHand)
                     } else {
                         resp
                     };
-                    if resp.clicked() && available {
-                        go_to = Some(cat);
+                    if resp.clicked() {
+                        if custom {
+                            toggle = Some(cat);
+                        } else if available && in_profile {
+                            go_to = Some(cat);
+                        }
                     }
                 }
             });
             ui.add_space(gap - ui.spacing().item_spacing.y);
+        }
+        if let Some(cat) = toggle {
+            let list = &mut self.settings.custom_categories;
+            if let Some(i) = list.iter().position(|c| *c == cat) {
+                list.remove(i);
+            } else {
+                list.push(cat);
+            }
+            self.save_settings();
         }
         if let Some(cat) = go_to {
             self.filter.categories.clear();
@@ -525,6 +596,7 @@ impl CleanerApp {
 
     fn ui_results_footer(&mut self, ctx: &egui::Context, p: &Palette) {
         let (count, bytes) = self.tree.selected_summary();
+        let disks = self.tree.selected_vhds().len();
         let total = self.tree.total_found();
         egui::TopBottomPanel::bottom("footer")
             .frame(
@@ -552,6 +624,9 @@ impl CleanerApp {
                                 .color(p.muted)
                                 .small(),
                         );
+                        if disks > 0 {
+                            ui.label(RichText::new(i18n::plus_disks(disks)).color(p.review).small());
+                        }
                     });
 
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -583,7 +658,7 @@ impl CleanerApp {
                         ui.label(
                             RichText::new(i18n::scanning_progress(
                                 self.categories_done,
-                                Category::all().len(),
+                                self.scan_total,
                             ))
                             .color(p.muted),
                         );
@@ -594,6 +669,12 @@ impl CleanerApp {
                                 self.tree.root_nodes().len(),
                             ))
                             .color(p.muted),
+                        );
+                    }
+                    if self.scanned_profile != ScanProfile::Full {
+                        ui.label(
+                            RichText::new(i18n::profile_tag(i18n::profile_name(self.scanned_profile)))
+                                .color(p.muted),
                         );
                     }
                 });
@@ -907,7 +988,7 @@ impl CleanerApp {
         let pill_rect = theme::paint_pill(
             painter,
             Pos2::new(right - bar_w - 18.0, card.center().y),
-            i18n::risk_label(node.risk),
+            if node.is_vhd() { i18n::vhd_pill() } else { i18n::risk_label(node.risk) },
             p.risk(node.risk),
             p,
         );
@@ -958,7 +1039,13 @@ impl CleanerApp {
         let has_review = targets
             .iter()
             .filter_map(|id| self.tree.node(*id))
-            .any(|n| n.risk == Risk::Review);
+            .any(|n| n.risk == Risk::Review && !n.is_vhd());
+        let disks: Vec<ScanNode> = self
+            .tree
+            .selected_vhds()
+            .iter()
+            .filter_map(|id| self.tree.node(*id).cloned())
+            .collect();
 
         egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
             theme::centered_column(ui, 640.0, |ui| {
@@ -967,6 +1054,7 @@ impl CleanerApp {
                 ui.label(RichText::new(i18n::confirm_body(count, &format_bytes(bytes))).color(p.muted));
                 ui.add_space(14.0);
 
+                if bytes > 0 || disks.is_empty() {
                 theme::card(p).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.label(RichText::new(i18n::space_to_free()).color(p.muted).small());
@@ -998,6 +1086,41 @@ impl CleanerApp {
                         });
                     }
                 });
+                }
+
+                if !disks.is_empty() {
+                    ui.add_space(10.0);
+                    theme::card(p).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(RichText::new(i18n::disks_to_compact()).font(strong(14.0)));
+                        ui.add_space(4.0);
+                        for d in &disks {
+                            ui.horizontal(|ui| {
+                                let (r, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+                                ui.painter().circle_filled(r.center(), 4.5, theme::category_color(d.category));
+                                ui.label(d.label.to_string()).on_hover_text(&d.detail);
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    ui.label(RichText::new(format_bytes(d.size_bytes)).color(p.muted));
+                                });
+                            });
+                        }
+                        ui.add_space(6.0);
+                        let (fast, slow) = cleaner_core::compact_estimate_all(disks.iter().map(|d| d.size_bytes));
+                        ui.label(RichText::new(i18n::compact_estimate(fast, slow)).font(strong(14.0)).color(p.text));
+                        ui.add_space(4.0);
+                        egui::Frame::new()
+                            .fill(mix(p.review, p.bg, 0.87))
+                            .stroke(Stroke::new(1.0_f32, mix(p.review, p.bg, 0.5)))
+                            .corner_radius(CornerRadius::same(10))
+                            .inner_margin(egui::Margin::same(12))
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.label(RichText::new(i18n::compact_slow_note()).color(p.review));
+                                ui.add_space(4.0);
+                                ui.label(RichText::new(i18n::compact_warning()).color(p.review));
+                            });
+                    });
+                }
 
                 if has_review {
                     ui.add_space(10.0);
@@ -1041,7 +1164,12 @@ impl CleanerApp {
                         self.screen = Screen::Results;
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if theme::danger_button(ui, p, &format!("  {}  ", i18n::delete_size(&format_bytes(bytes)))).clicked() {
+                        let label = match (bytes > 0, disks.len()) {
+                            (_, 0) => i18n::delete_size(&format_bytes(bytes)),
+                            (false, n) => i18n::compact_disks(n),
+                            (true, _) => i18n::delete_and_compact(&format_bytes(bytes)),
+                        };
+                        if theme::danger_button(ui, p, &format!("  {label}  ")).clicked() {
                             self.start_clean();
                         }
                     });
@@ -1053,6 +1181,10 @@ impl CleanerApp {
     // ------------------------------------------------------------ cleaning
 
     fn ui_cleaning(&mut self, ui: &mut egui::Ui, p: &Palette) {
+        if let Some((c, at)) = self.compact.clone() {
+            self.ui_compacting(ui, p, &c, at);
+            return;
+        }
         let (done, total, label) = self.delete_progress.clone();
         let frac = if total > 0 { done as f32 / total as f32 } else { 0.0 };
         let shown = ui.ctx().animate_value_with_time(egui::Id::new("clean_progress"), frac, 0.25);
@@ -1073,6 +1205,55 @@ impl CleanerApp {
                     });
                 }
             });
+        });
+    }
+
+    fn ui_compacting(&mut self, ui: &mut egui::Ui, p: &Palette, c: &CompactProgress, at: std::time::Instant) {
+        let elapsed = c.elapsed_secs + at.elapsed().as_secs();
+        let (fast, slow) = c.estimate_secs;
+        // Real progress when diskpart's output is readable; otherwise the bar
+        // follows the clock against the slow estimate and never fills up.
+        let frac = match c.percent {
+            Some(pct) => (c.disk as f32 + pct as f32 / 100.0) / c.disks.max(1) as f32,
+            None => (elapsed as f32 / slow.max(1) as f32).min(0.95),
+        };
+        let shown = ui.ctx().animate_value_with_time(egui::Id::new("compact_progress"), frac, 0.4);
+        ui.add_space((ui.available_height() * 0.16).max(20.0));
+        theme::centered_column(ui, 600.0, |ui| {
+            ui.label(RichText::new(i18n::compacting_title()).font(strong(16.0)).color(p.muted));
+            let big = match c.percent {
+                Some(_) => format!("{:.0}%", shown * 100.0),
+                None => i18n::duration(elapsed),
+            };
+            ui.label(RichText::new(big).font(display(64.0)).color(p.text));
+            ui.add_space(6.0);
+            theme::progress_bar(ui, p, shown, 10.0);
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(i18n::compacting_disk(c.disk + 1, c.disks)).color(p.text));
+                ui.label(RichText::new(c.label.to_string()).color(p.muted));
+            });
+            ui.horizontal(|ui| {
+                if c.percent.is_some() {
+                    ui.label(RichText::new(i18n::elapsed(&i18n::duration(elapsed))).color(p.muted));
+                    ui.add_space(8.0);
+                }
+                ui.label(RichText::new(i18n::compact_estimate(fast, slow)).color(p.muted));
+            });
+            if c.percent.is_none() && elapsed < 30 {
+                ui.label(RichText::new(i18n::waiting_admin()).color(p.muted).small());
+            }
+            ui.add_space(14.0);
+            egui::Frame::new()
+                .fill(mix(p.review, p.bg, 0.87))
+                .stroke(Stroke::new(1.0_f32, mix(p.review, p.bg, 0.5)))
+                .corner_radius(CornerRadius::same(10))
+                .inner_margin(egui::Margin::same(12))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    let note = if elapsed > slow { i18n::past_estimate() } else { i18n::compact_slow_note() };
+                    ui.label(RichText::new(note).color(p.review));
+                });
         });
     }
 

@@ -5,6 +5,8 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
+use crate::model::Category;
+use crate::profiles::ScanProfile;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -13,6 +15,16 @@ pub struct Settings {
     /// Interface language. `None` follows the operating system.
     #[serde(default)]
     pub language: Option<Lang>,
+    /// Which categories a scan checks.
+    #[serde(default)]
+    pub profile: ScanProfile,
+    /// Categories of the custom profile.
+    #[serde(default = "all_categories")]
+    pub custom_categories: Vec<Category>,
+}
+
+fn all_categories() -> Vec<Category> {
+    Category::all().to_vec()
 }
 
 impl Default for Settings {
@@ -21,11 +33,18 @@ impl Default for Settings {
             temp_min_age_days: 7,
             dark_theme: true,
             language: None,
+            profile: ScanProfile::Full,
+            custom_categories: all_categories(),
         }
     }
 }
 
 impl Settings {
+    /// Categories the current profile scans.
+    pub fn scan_categories(&self) -> Vec<Category> {
+        self.profile.categories(&self.custom_categories)
+    }
+
     /// Language chosen by the user, or the system one.
     pub fn effective_language(&self) -> Lang {
         self.language.unwrap_or_else(Lang::detect)

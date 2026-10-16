@@ -5,8 +5,22 @@ use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Utc};
 use jwalk::WalkDir;
 
+/// Builds a `Command` that never flashes a console window on Windows
+/// (the release build has no console of its own).
+pub fn command(program: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 pub fn run_command(program: &str, args: &[&str], timeout: Duration) -> Option<String> {
-    let child = Command::new(program).args(args).output().ok()?;
+    let child = command(program).args(args).output().ok()?;
     if child.status.success() {
         Some(String::from_utf8_lossy(&child.stdout).trim().to_string())
     } else {
@@ -17,13 +31,13 @@ pub fn run_command(program: &str, args: &[&str], timeout: Duration) -> Option<St
 
 pub fn which(program: &str) -> bool {
     if cfg!(windows) {
-        Command::new("where")
+        command("where")
             .arg(program)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
     } else {
-        Command::new("which")
+        command("which")
             .arg(program)
             .output()
             .map(|o| o.status.success())

@@ -116,6 +116,8 @@ pub fn category_color(c: Category) -> Color32 {
         Category::NuGet => hex(0x7383DE),
         Category::Composer => hex(0xA88563),
         Category::Docker => hex(0x2F8FE6),
+        Category::Wsl => hex(0x9BC53D),
+        Category::Ide => hex(0xE07BF0),
         Category::Temp => hex(0x8E98A8),
     }
 }
@@ -228,6 +230,8 @@ pub fn apply(ctx: &egui::Context, p: &Palette) {
     v.selection.bg_fill = mix(p.accent, p.bg, 0.6);
     v.selection.stroke = Stroke::new(1.0_f32, p.accent_ink());
     v.slider_trailing_fill = true;
+    // Hand cursor on everything clickable (rows, tiles, menus, checkboxes…).
+    v.interact_cursor = Some(egui::CursorIcon::PointingHand);
     v.window_shadow = epaint::Shadow {
         offset: [0, 8],
         blur: 24,
@@ -288,31 +292,77 @@ pub fn apply(ctx: &egui::Context, p: &Palette) {
 
 // ---------------------------------------------------------------- widgets
 
+/// Hover feedback shared by buttons and chips: the widget grows smoothly to
+/// `max` while hovered and shrinks a little while pressed.
+pub fn hover_scale(ui: &Ui, resp: &Response, max: f32) -> f32 {
+    let enabled = resp.enabled();
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(resp.id.with("hover-scale"), resp.hovered() && enabled, 0.12);
+    let s = 1.0 + (max - 1.0) * t;
+    if enabled && resp.is_pointer_button_down_on() {
+        s * 0.96
+    } else {
+        s
+    }
+}
+
+fn scaled(rect: Rect, s: f32) -> Rect {
+    Rect::from_center_size(rect.center(), rect.size() * s)
+}
+
+/// Hand-drawn button so it can scale on hover. Disabled buttons keep their
+/// shape but fade and do not react.
+#[allow(clippy::too_many_arguments)]
+fn button(
+    ui: &mut Ui,
+    p: &Palette,
+    text: &str,
+    font: FontId,
+    fill: Color32,
+    text_color: Color32,
+    stroke: Stroke,
+    enabled: bool,
+) -> Response {
+    let text = text.trim();
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font.clone(), text_color);
+    let size = Vec2::new(galley.size().x + 40.0, 40.0);
+    let resp = ui
+        .add_enabled_ui(enabled, |ui| ui.allocate_exact_size(size, Sense::click()).1)
+        .inner;
+    let resp = if enabled { resp.on_hover_cursor(egui::CursorIcon::PointingHand) } else { resp };
+    let rect = resp.rect;
+    if ui.is_rect_visible(rect) {
+        let s = hover_scale(ui, &resp, 1.1);
+        let r = scaled(rect, s);
+        let (fill, text_color, stroke) = if enabled {
+            (fill, text_color, stroke)
+        } else {
+            (
+                mix(fill, p.bg, 0.55),
+                mix(text_color, p.bg, 0.45),
+                Stroke::new(stroke.width, mix(stroke.color, p.bg, 0.5)),
+            )
+        };
+        let painter = ui.painter();
+        painter.rect(r, CornerRadius::same((10.0 * s) as u8), fill, stroke, StrokeKind::Inside);
+        let g = painter.layout_no_wrap(text.to_owned(), FontId::new(font.size * s, font.family), text_color);
+        painter.galley(r.center() - g.size() / 2.0, g, text_color);
+    }
+    resp
+}
+
 pub fn primary_button(ui: &mut Ui, p: &Palette, text: &str, enabled: bool) -> Response {
-    let btn = egui::Button::new(egui::RichText::new(text).font(strong(15.0)).color(p.accent_text))
-        .fill(p.accent)
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::same(10))
-        .min_size(Vec2::new(0.0, 40.0));
-    ui.add_enabled(enabled, btn)
+    button(ui, p, text, strong(15.0), p.accent, p.accent_text, Stroke::NONE, enabled)
 }
 
 pub fn danger_button(ui: &mut Ui, p: &Palette, text: &str) -> Response {
-    let btn = egui::Button::new(egui::RichText::new(text).font(strong(15.0)).color(Color32::WHITE))
-        .fill(p.danger)
-        .stroke(Stroke::NONE)
-        .corner_radius(CornerRadius::same(10))
-        .min_size(Vec2::new(0.0, 40.0));
-    ui.add(btn)
+    button(ui, p, text, strong(15.0), p.danger, Color32::WHITE, Stroke::NONE, true)
 }
 
 pub fn ghost_button(ui: &mut Ui, p: &Palette, text: &str) -> Response {
-    let btn = egui::Button::new(egui::RichText::new(text).color(p.text))
-        .fill(Color32::TRANSPARENT)
-        .stroke(Stroke::new(1.0_f32, p.line))
-        .corner_radius(CornerRadius::same(10))
-        .min_size(Vec2::new(0.0, 40.0));
-    ui.add(btn)
+    let fill = if p.dark { Color32::TRANSPARENT } else { p.surface };
+    button(ui, p, text, body(14.0), fill, p.text, Stroke::new(1.0_f32, p.line), true)
 }
 
 /// Rounded filter chip with an optional colour dot and trailing count.
@@ -326,6 +376,8 @@ pub fn chip(ui: &mut Ui, p: &Palette, label: &str, selected: bool, dot: Option<C
     let size = Vec2::new(galley.size().x + 24.0 + dot_w, 28.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
+        let sc = hover_scale(ui, &resp, 1.05);
+        let rect = scaled(rect, sc);
         let painter = ui.painter();
         let (fill, stroke) = if selected {
             (mix(p.accent, p.bg, if p.dark { 0.8 } else { 0.72 }), Stroke::new(1.0_f32, p.accent_ink()))
@@ -335,11 +387,16 @@ pub fn chip(ui: &mut Ui, p: &Palette, label: &str, selected: bool, dot: Option<C
             (Color32::TRANSPARENT, Stroke::new(1.0_f32, p.line))
         };
         painter.rect(rect, CornerRadius::same(14), fill, stroke, StrokeKind::Inside);
-        let mut x = rect.left() + 12.0;
+        let mut x = rect.left() + 12.0 * sc;
         if let Some(c) = dot {
-            painter.circle_filled(Pos2::new(x + 4.0, rect.center().y), 4.0, c);
-            x += dot_w;
+            painter.circle_filled(Pos2::new(x + 4.0 * sc, rect.center().y), 4.0 * sc, c);
+            x += dot_w * sc;
         }
+        let galley = if sc != 1.0 {
+            painter.layout_no_wrap(label.to_owned(), body(13.0 * sc), text_color)
+        } else {
+            galley
+        };
         painter.galley(
             Pos2::new(x, rect.center().y - galley.size().y / 2.0),
             galley,
